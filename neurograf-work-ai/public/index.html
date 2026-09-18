@@ -55,6 +55,12 @@ button{cursor:pointer}.gold{border:0;background:linear-gradient(90deg,#b58b1c,#f
     </section>
 
     <section class="card">
+      <div class="title">MAX</div>
+      <div id="maxStatusText" class="hint">Проверяю подключение MAX…</div>
+      <button id="maxSetup" class="mini" style="margin-top:10px">Настроить Webhook MAX</button>
+    </section>
+
+    <section class="card">
       <div class="title">Спросить Миру</div>
       <div id="chat" class="chat"></div>
       <div class="compose">
@@ -143,10 +149,10 @@ function render(){
   $("#ideaCount").textContent=data.ideas.length+" идей";
   $("#actionCount").textContent=(data.actions||[]).length+" черновиков";
   $("#tasksList").innerHTML=data.tasks.map(t=>'<div class="item '+(t.status==="done"?"done":"")+'"><div><b>'+esc(t.title)+'</b><br><small>'+esc(formatDue(t.due_at))+'</small></div><div class="itemActions"><button class="mini" data-task="'+t.id+'" data-status="'+(t.status==="done"?"open":"done")+'">'+(t.status==="done"?"↩":"✓")+'</button><button class="mini danger" data-task-delete="'+t.id+'" data-task-title="'+esc(t.title)+'">🗑</button></div></div>').join("")||"<small>Задач пока нет.</small>";
-  $("#clientsList").innerHTML=data.clients.map(c=>'<div class="item"><div><b>'+esc(c.name)+'</b><br><small>'+esc(c.project||"без проекта")+(c.phone?" · "+esc(c.phone):"")+'</small></div></div>').join("")||"<small>Клиентов пока нет.</small>";
+  $("#clientsList").innerHTML=data.clients.map(c=>'<div class="item"><div><b>'+esc(c.name)+'</b><br><small>'+esc(c.project||"без проекта")+(c.phone?" · "+esc(c.phone):"")+(c.max_user_id?" · MAX ✓":"")+'</small></div><div class="itemActions">'+(!c.max_user_id?'<button class="mini" data-max-link="'+c.id+'">Ссылка MAX</button>':'<span class="approvedMark">MAX ✓</span>')+'</div></div>').join("")||"<small>Клиентов пока нет.</small>";
   $("#projectsList").innerHTML=data.projects.map(p=>'<div class="item"><div><b>'+esc(p.name)+'</b><br><small>'+esc(p.status)+'</small></div></div>').join("")||"<small>Проектов пока нет.</small>";
   $("#ideasList").innerHTML=data.ideas.map(i=>'<div class="item"><div>'+esc(i.text)+'</div></div>').join("")||"<small>Идей пока нет.</small>";
-  $("#actionsList").innerHTML=(data.actions||[]).map(a=>{let p={};try{p=JSON.parse(a.payload||"{}")}catch{}const approved=a.status==="approved";return '<div class="item"><div style="min-width:0"><b class="'+(approved?"approvedMark":"")+'">'+(approved?"Подтверждено · не отправлено":"Не отправлено")+'</b><br><small>'+esc(p.channel||"сообщение")+' · '+esc(p.recipient_name||a.target||"—")+'</small><div style="margin-top:7px;white-space:pre-wrap">'+esc(p.text||"")+'</div></div><div class="itemActions">'+(!approved?'<button class="mini approve" data-action-approve="'+a.id+'">Подтвердить</button>':"")+'<button class="mini" data-copy-text="'+encodeURIComponent(p.text||"")+'">Копировать</button><button class="mini danger" data-action-reject="'+a.id+'">Отклонить</button></div></div>'}).join("")||"<small>Черновиков нет.</small>";
+  $("#actionsList").innerHTML=(data.actions||[]).map(a=>{let p={};try{p=JSON.parse(a.payload||"{}")}catch{}const approved=a.status==="approved";return '<div class="item"><div style="min-width:0"><b class="'+(approved?"approvedMark":"")+'">'+(approved?"Подтверждено · не отправлено":"Не отправлено")+'</b><br><small>'+esc(p.channel||"сообщение")+' · '+esc(p.recipient_name||a.target||"—")+'</small><div style="margin-top:7px;white-space:pre-wrap">'+esc(p.text||"")+'</div></div><div class="itemActions">'+(!approved?'<button class="mini approve" data-action-approve="'+a.id+'">Подтвердить</button>':"")+(approved&&p.channel==="max"?'<button class="mini approve" data-action-send="'+a.id+'">Отправить в MAX</button>':"")+'<button class="mini" data-copy-text="'+encodeURIComponent(p.text||"")+'">Копировать</button><button class="mini danger" data-action-reject="'+a.id+'">Отклонить</button></div></div>'}).join("")||"<small>Черновиков нет.</small>";
 }
 async function refreshData(){
   data=await api("/api/bootstrap");
@@ -158,6 +164,28 @@ async function load(){
   for(const h of data.history||[]) msg(h.role,h.content);
   if(!(data.history||[]).length) msg("assistant","Я Мира. Могу помочь с задачами, клиентами, проектами, текстами и идеями.");
 }
+async function loadMaxStatus(){
+  const el=$("#maxStatusText");
+  try{
+    const s=await api("/api/max/status");
+    if(!s.configured){
+      el.textContent="MAX ещё не подключён: нужен секрет MAX_BOT_TOKEN.";
+      $("#maxSetup").disabled=true;
+      return;
+    }
+    if(s.working===false){
+      el.textContent="Токен MAX добавлен, но API не отвечает: "+(s.error||"ошибка");
+      $("#maxSetup").disabled=false;
+      return;
+    }
+    const name=s.bot?.first_name||s.bot?.username||"бот";
+    el.textContent="MAX подключён: "+name+(s.webhook_secret?" · Webhook secret готов":" · нужен MAX_WEBHOOK_SECRET");
+    $("#maxSetup").disabled=!s.webhook_secret;
+  }catch{
+    el.textContent="Не удалось проверить MAX.";
+  }
+}
+
 async function boot(){
   try{
     const s=await api("/api/session");
@@ -166,6 +194,7 @@ async function boot(){
       const h=await api("/api/health");
       $("#status").textContent=h.openai?"AI готов":"AI без ключа";
       await load();
+      await loadMaxStatus();
     }else{$("#login").classList.remove("hidden");$("#app").classList.add("hidden");}
   }catch(e){$("#loginErr").textContent="Не удалось связаться с сервером.";}
 }
@@ -177,6 +206,17 @@ $("#loginForm").onsubmit=async e=>{
   }catch(e){$("#loginErr").textContent=e.body?.error||"Не удалось войти";}
 };
 $("#logout").onclick=async()=>{await api("/api/logout",{method:"POST",body:"{}"});location.reload();};
+$("#maxSetup").onclick=async()=>{
+  const b=$("#maxSetup");
+  b.disabled=true;
+  try{
+    const r=await api("/api/max/setup",{method:"POST",body:"{}"});
+    alert("Webhook MAX подключён.");
+    await loadMaxStatus();
+  }catch(e){
+    alert(e.body?.detail||e.body?.error||e.message);
+  }finally{b.disabled=false;}
+};
 
 async function ask(text,shouldSpeak=true){
   text=(text||"").trim();if(!text)return;
@@ -261,6 +301,26 @@ document.addEventListener("click",async e=>{
       const result=await api("/api/actions/"+b.dataset.actionApprove,{method:"PATCH",body:JSON.stringify({status:"approved"})});
       await refreshData();
       alert(result.message||"Черновик подтверждён, но пока не отправлен.");
+    }
+  }
+  if(b.dataset.maxLink){
+    try{
+      const r=await api("/api/clients/"+b.dataset.maxLink+"/max-link");
+      const ok=await copyText(r.link);
+      alert((ok?"Ссылка скопирована. ":"")+"Отправьте её клиенту. После запуска бота MAX клиент привяжется автоматически.\n\n"+r.link);
+    }catch(e){
+      alert(e.body?.detail||e.body?.error||e.message);
+    }
+  }
+  if(b.dataset.actionSend){
+    if(confirm("Отправить подтверждённое сообщение клиенту через MAX?")){
+      try{
+        const r=await api("/api/actions/"+b.dataset.actionSend+"/send",{method:"POST",body:"{}"});
+        alert(r.sent?"Сообщение отправлено в MAX.":"Сообщение не отправлено.");
+        await refreshData();
+      }catch(e){
+        alert(e.body?.detail||e.body?.error||e.message);
+      }
     }
   }
   if(b.dataset.actionReject){
