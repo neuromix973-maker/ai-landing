@@ -386,56 +386,13 @@ async function routeApi(request, env, url){
       ok:schema.ok,
       app:"NEUROGRAF WORK AI",
       assistant:"Мира",
-      version:"0.8.2-selftest-roundtrip",
+      version:"0.8-actions",
       database:schema.ok?"ready":"missing",
       schema:schema.schema||null,
       owner_password:Boolean(env.OWNER_PASSWORD),
       session_secret:Boolean(env.SESSION_SECRET),
       openai:Boolean(env.OPENAI_API_KEY)
     }, schema.ok?200:503);
-  }
-
-  if(url.pathname==="/api/__selftest_4e1c90b8" && request.method==="GET"){
-    if(!env.OPENAI_API_KEY) return j({ok:false,error:"OPENAI_API_KEY missing"},503);
-    try{
-      const probe=await openAI(env,{
-        model:env.OPENAI_CHAT_MODEL||"gpt-5.6-luna",
-        instructions:"Выполни ровно один вызов инструмента probe_action со значением ok. Не отвечай обычным текстом.",
-        tools:[{
-          type:"function",
-          name:"probe_action",
-          description:"Тестовый безопасный инструмент.",
-          parameters:{
-            type:"object",
-            properties:{value:{type:"string"}},
-            required:["value"]
-          }
-        }],
-        input:"Запусти тестовый инструмент."
-      });
-      const call=(Array.isArray(probe.output)?probe.output:[]).find(x=>x?.type==="function_call");
-      if(!call) return j({ok:false,tool_call:false},502);
-      const completed=await openAI(env,{
-        model:env.OPENAI_CHAT_MODEL||"gpt-5.6-luna",
-        instructions:"После результата инструмента ответь только словом SELFTEST_OK.",
-        tools:[{
-          type:"function",
-          name:"probe_action",
-          description:"Тестовый безопасный инструмент.",
-          parameters:{type:"object",properties:{value:{type:"string"}},required:["value"]}
-        }],
-        previous_response_id:probe.id,
-        input:[{
-          type:"function_call_output",
-          call_id:call.call_id,
-          output:JSON.stringify({ok:true,value:"ok"})
-        }]
-      });
-      const finalText=extractText(completed);
-      return j({ok:finalText==="SELFTEST_OK",tool_call:true,round_trip:finalText});
-    }catch(e){
-      return j({ok:false,error:e?.detail||e?.message||"selftest failed"},502);
-    }
   }
 
   // Login endpoint sets an HttpOnly session cookie.
