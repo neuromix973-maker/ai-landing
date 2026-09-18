@@ -6,3 +6,8 @@ compatibility_date = "2026-09-18"
 directory = "./public"
 binding = "ASSETS"
 run_worker_first = ["/api/*"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "neurograf-work-ai-db"
+database_id = "14068504-c8e3-4a46-ae32-300d84a06090"
