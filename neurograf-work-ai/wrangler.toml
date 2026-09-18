@@ -11,3 +11,8 @@ run_worker_first = ["/api/*"]
 binding = "DB"
 database_name = "neurograf-work-ai-db"
 database_id = "14068504-c8e3-4a46-ae32-300d84a06090"
+
+[vars]
+OPENAI_CHAT_MODEL = "gpt-5.6-luna"
+OPENAI_TTS_MODEL = "gpt-4o-mini-tts"
+OPENAI_TTS_VOICE = "coral"
