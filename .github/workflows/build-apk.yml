@@ -40,12 +40,18 @@ jobs:
       - name: Build unsigned release APK
         run: gradle :app:assembleRelease --no-daemon
 
-      - name: Rename unsigned APK
-        run: cp app/build/outputs/apk/release/app-release-unsigned.apk EXCAVATOR_PRO_v15_13_8_RELEASE_UNSIGNED.apk
+      - name: Align unsigned APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          ZIPALIGN="$(find "$ANDROID_HOME/build-tools" -type f -name zipalign | sort -V | tail -n 1)"
+          test -x "$ZIPALIGN"
+          "$ZIPALIGN" -p -f 4             app/build/outputs/apk/release/app-release-unsigned.apk             EXCAVATOR_PRO_v15_13_8_RELEASE_ALIGNED_UNSIGNED.apk
+          "$ZIPALIGN" -c -v 4 EXCAVATOR_PRO_v15_13_8_RELEASE_ALIGNED_UNSIGNED.apk
 
-      - name: Upload unsigned APK
+      - name: Upload aligned unsigned APK
         uses: actions/upload-artifact@v4
         with:
-          name: EXCAVATOR_PRO_v15_13_8_RELEASE_UNSIGNED_APK
-          path: EXCAVATOR_PRO_v15_13_8_RELEASE_UNSIGNED.apk
+          name: EXCAVATOR_PRO_v15_13_8_RELEASE_ALIGNED_UNSIGNED_APK
+          path: EXCAVATOR_PRO_v15_13_8_RELEASE_ALIGNED_UNSIGNED.apk
           retention-days: 90
