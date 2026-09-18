@@ -51,6 +51,7 @@ button{cursor:pointer}.gold{border:0;background:linear-gradient(90deg,#b58b1c,#f
       <button class="tile" data-view="clients"><b>👥 Клиенты</b><span id="clientCount">0 клиентов</span></button>
       <button class="tile" data-view="projects"><b>🚀 Проекты</b><span id="projectCount">0 проектов</span></button>
       <button class="tile" data-view="ideas"><b>💡 Идеи</b><span id="ideaCount">0 идей</span></button>
+      <button class="tile" data-view="actions"><b>📝 Черновики</b><span id="actionCount">0</span></button>
     </section>
 
     <section class="card">
@@ -95,6 +96,11 @@ button{cursor:pointer}.gold{border:0;background:linear-gradient(90deg,#b58b1c,#f
       <div class="title">Идеи</div>
       <form id="ideaForm" class="row"><input id="ideaText" placeholder="Запомнить идею"><button class="gold">Сохранить</button></form>
       <div id="ideasList" class="list"></div>
+    </section>
+    <section id="actions" class="card panel hidden">
+      <div class="title">Черновики</div>
+      <div class="hint">Мира сохраняет здесь внешние сообщения. Они ещё не отправлены.</div>
+      <div id="actionsList" class="list"></div>
     </section>
   </div>
 </div>
