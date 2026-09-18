@@ -1,10 +1,10 @@
 const SCHEMA = [
-  \`CREATE TABLE IF NOT EXISTS app_meta (
+  `CREATE TABLE IF NOT EXISTS app_meta (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-  )\`,
-  \`CREATE TABLE IF NOT EXISTS tasks (
+  )`,
+  `CREATE TABLE IF NOT EXISTS tasks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     title TEXT NOT NULL,
     details TEXT,
@@ -14,8 +14,8 @@ const SCHEMA = [
     client_id INTEGER,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-  )\`,
-  \`CREATE TABLE IF NOT EXISTS clients (
+  )`,
+  `CREATE TABLE IF NOT EXISTS clients (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
     phone TEXT,
@@ -24,30 +24,30 @@ const SCHEMA = [
     notes TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-  )\`,
-  \`CREATE TABLE IF NOT EXISTS projects (
+  )`,
+  `CREATE TABLE IF NOT EXISTS projects (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL UNIQUE,
     status TEXT NOT NULL DEFAULT 'active',
     notes TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-  )\`,
-  \`CREATE TABLE IF NOT EXISTS ideas (
+  )`,
+  `CREATE TABLE IF NOT EXISTS ideas (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     text TEXT NOT NULL,
     project_id INTEGER,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-  )\`,
-  \`CREATE TABLE IF NOT EXISTS conversations (
+  )`,
+  `CREATE TABLE IF NOT EXISTS conversations (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     role TEXT NOT NULL CHECK(role IN ('user','assistant','system')),
     content TEXT NOT NULL,
     project_id INTEGER,
     client_id INTEGER,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-  )\`,
-  \`CREATE TABLE IF NOT EXISTS actions (
+  )`,
+  `CREATE TABLE IF NOT EXISTS actions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     action_type TEXT NOT NULL,
     target TEXT,
@@ -57,10 +57,10 @@ const SCHEMA = [
     executed_at TEXT,
     error TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-  )\`
+  )`
 ];
 
-const SYSTEM = \`
+const SYSTEM = `
 Ты — Мира, персональный рабочий AI-ассистент в приложении NEUROGRAF WORK AI.
 Всегда отвечай на русском языке.
 Манера: мягкая, спокойная, доброжелательная, деловая, без тараторки и лишней воды.
@@ -68,7 +68,7 @@ const SYSTEM = \`
 Используй переданный контекст приложения. Не выдумывай отсутствующие факты.
 Если пользователь просит отправить сообщение, опубликовать что-либо, удалить данные или выполнить другое внешнее/необратимое действие, подготовь результат, но не утверждай, что действие уже выполнено. Такие действия требуют отдельного подтверждения и реального серверного действия.
 Если ответ предназначен для чтения вслух, пиши естественно, короткими фразами.
-\`;
+`;
 
 function j(data, status=200, extra={}) {
   return new Response(JSON.stringify(data), {
@@ -175,17 +175,7 @@ async function routeApi(request, env, url){
     }, schema.ok?200:503);
   }
 
-  if(url.pathname==="/api/login" && request.method==="POST"){
-    if(!env.OWNER_PASSWORD || !env.SESSION_SECRET) return j({error:"Owner auth is not configured"},503);
-    const body=await bodyJson(request);
-    if(!(await sameSecret(String(body.password||""),env.OWNER_PASSWORD))) return j({error:"Неверный пароль"},401);
-    const token=await makeSession(env);
-    return j({ok:true},{
-      status:200
-    });
-  }
-
-  // Dedicated login response with Set-Cookie because j() signature is simple.
+  // Login endpoint sets an HttpOnly session cookie.
   if(url.pathname==="/api/login-cookie" && request.method==="POST"){
     if(!env.OWNER_PASSWORD || !env.SESSION_SECRET) return j({error:"Owner auth is not configured"},503);
     const body=await bodyJson(request);
@@ -196,7 +186,7 @@ async function routeApi(request, env, url){
       headers:{
         "Content-Type":"application/json; charset=utf-8",
         "Cache-Control":"no-store",
-        "Set-Cookie":\`mira_session=\${token}; Path=/; Max-Age=2592000; HttpOnly; Secure; SameSite=Strict\`
+        "Set-Cookie":`mira_session=${token}; Path=/; Max-Age=2592000; HttpOnly; Secure; SameSite=Strict`
       }
     });
   }
@@ -273,11 +263,11 @@ async function routeApi(request, env, url){
 
     const r=await fetch("https://api.openai.com/v1/responses",{
       method:"POST",
-      headers:{"Authorization":\`Bearer \${env.OPENAI_API_KEY}\`,"Content-Type":"application/json"},
+      headers:{"Authorization":`Bearer ${env.OPENAI_API_KEY}`,"Content-Type":"application/json"},
       body:JSON.stringify({
         model:env.OPENAI_CHAT_MODEL||"gpt-5.6-luna",
         instructions:SYSTEM,
-        input:\`Контекст приложения:\n\${JSON.stringify(ctx)}\n\nЗапрос пользователя:\n\${message}\`
+        input:`Контекст приложения:\n${JSON.stringify(ctx)}\n\nЗапрос пользователя:\n${message}`
       })
     });
     const data=await r.json().catch(()=>({}));
@@ -294,7 +284,7 @@ async function routeApi(request, env, url){
     if(!text) return j({error:"text required"},400);
     const r=await fetch("https://api.openai.com/v1/audio/speech",{
       method:"POST",
-      headers:{"Authorization":\`Bearer \${env.OPENAI_API_KEY}\`,"Content-Type":"application/json"},
+      headers:{"Authorization":`Bearer ${env.OPENAI_API_KEY}`,"Content-Type":"application/json"},
       body:JSON.stringify({
         model:env.OPENAI_TTS_MODEL||"gpt-4o-mini-tts",
         voice:env.OPENAI_TTS_VOICE||"coral",
