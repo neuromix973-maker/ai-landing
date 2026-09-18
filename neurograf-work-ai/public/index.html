@@ -15,7 +15,7 @@ input,textarea{width:100%;background:#070708;border:1px solid #303034;color:#fff
 button{cursor:pointer}.gold{border:0;background:linear-gradient(90deg,#b58b1c,#f0d36b);color:#060606;font-weight:900;border-radius:14px;padding:13px 15px}.wide{width:100%}.hero{text-align:center;padding:22px 16px}.hero h1{margin:8px 0 3px;color:var(--gold2)}.hero p{color:#c9c9c9;margin:0 0 16px}.voice{font-size:17px;padding:16px}.hint{font-size:12px;color:var(--muted);margin-top:8px}
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:12px}.tile{background:#0d0d0e;border:1px solid var(--line);border-radius:17px;padding:14px;color:#eee;text-align:left}.tile b{color:var(--gold2);display:block;margin-bottom:5px}.tile span{font-size:12px;color:#999}
 .title{font-weight:900;color:var(--gold2);margin-bottom:10px}.chat{min-height:140px;max-height:42vh;overflow:auto}.msg{padding:11px 12px;margin:7px 0;border-radius:15px;white-space:pre-wrap;line-height:1.42}.user{background:#241e0f;margin-left:14%}.ai{background:#141416;border:1px solid #252525;margin-right:8%}
-.compose{display:flex;gap:8px;align-items:end;margin-top:10px}.compose textarea{min-height:48px}.row{display:flex;gap:8px}.stack{display:grid;gap:8px}.list{display:grid;gap:7px;margin-top:10px}.item{display:flex;justify-content:space-between;gap:8px;align-items:center;padding:10px 12px;background:#09090a;border:1px solid #242424;border-radius:13px}.item small{color:#999}.mini{border:1px solid #3a321d;background:#111;color:#ddd;border-radius:10px;padding:7px 9px}.done{opacity:.55;text-decoration:line-through}.hidden{display:none!important}.err{color:#ff8b8b;font-size:13px;margin-top:9px}.quick{display:grid;grid-template-columns:1fr 1fr;gap:8px}.quick button{background:#111;border:1px solid #30291a;color:#eee;border-radius:13px;padding:12px}.logout{background:none;border:0;color:#888;font-size:12px}
+.compose{display:flex;gap:8px;align-items:end;margin-top:10px}.compose textarea{min-height:48px}.row{display:flex;gap:8px}.stack{display:grid;gap:8px}.list{display:grid;gap:7px;margin-top:10px}.item{display:flex;justify-content:space-between;gap:8px;align-items:center;padding:10px 12px;background:#09090a;border:1px solid #242424;border-radius:13px}.item small{color:#999}.mini{border:1px solid #3a321d;background:#111;color:#ddd;border-radius:10px;padding:7px 9px}.danger{border-color:#5a2727;color:#ffb0b0}.itemActions{display:flex;gap:6px;flex-shrink:0}.done{opacity:.55;text-decoration:line-through}.hidden{display:none!important}.err{color:#ff8b8b;font-size:13px;margin-top:9px}.quick{display:grid;grid-template-columns:1fr 1fr;gap:8px}.quick button{background:#111;border:1px solid #30291a;color:#eee;border-radius:13px;padding:12px}.logout{background:none;border:0;color:#888;font-size:12px}
 @media(max-width:520px){.wrap{padding:11px}.compose{flex-direction:column}.compose .gold{width:100%}}
 </style>
 </head>
@@ -126,11 +126,11 @@ function render(){
   $("#projectCount").textContent=data.projects.length+" проектов";
   $("#ideaCount").textContent=data.ideas.length+" идей";
   $("#actionCount").textContent=(data.actions||[]).length+" черновиков";
-  $("#tasksList").innerHTML=data.tasks.map(t=>'<div class="item '+(t.status==="done"?"done":"")+'"><div><b>'+esc(t.title)+'</b><br><small>'+esc(formatDue(t.due_at))+'</small></div><button class="mini" data-task="'+t.id+'" data-status="'+(t.status==="done"?"open":"done")+'">'+(t.status==="done"?"↩":"✓")+'</button></div>').join("")||"<small>Задач пока нет.</small>";
+  $("#tasksList").innerHTML=data.tasks.map(t=>'<div class="item '+(t.status==="done"?"done":"")+'"><div><b>'+esc(t.title)+'</b><br><small>'+esc(formatDue(t.due_at))+'</small></div><div class="itemActions"><button class="mini" data-task="'+t.id+'" data-status="'+(t.status==="done"?"open":"done")+'">'+(t.status==="done"?"↩":"✓")+'</button><button class="mini danger" data-task-delete="'+t.id+'" data-task-title="'+esc(t.title)+'">🗑</button></div></div>').join("")||"<small>Задач пока нет.</small>";
   $("#clientsList").innerHTML=data.clients.map(c=>'<div class="item"><div><b>'+esc(c.name)+'</b><br><small>'+esc(c.project||"без проекта")+(c.phone?" · "+esc(c.phone):"")+'</small></div></div>').join("")||"<small>Клиентов пока нет.</small>";
   $("#projectsList").innerHTML=data.projects.map(p=>'<div class="item"><div><b>'+esc(p.name)+'</b><br><small>'+esc(p.status)+'</small></div></div>').join("")||"<small>Проектов пока нет.</small>";
   $("#ideasList").innerHTML=data.ideas.map(i=>'<div class="item"><div>'+esc(i.text)+'</div></div>').join("")||"<small>Идей пока нет.</small>";
-  $("#actionsList").innerHTML=(data.actions||[]).map(a=>{let p={};try{p=JSON.parse(a.payload||"{}")}catch{}return '<div class="item"><div><b>Не отправлено</b><br><small>'+esc(p.channel||"сообщение")+' · '+esc(p.recipient_name||a.target||"—")+'</small><div style="margin-top:7px;white-space:pre-wrap">'+esc(p.text||"")+'</div></div></div>'}).join("")||"<small>Черновиков нет.</small>";
+  $("#actionsList").innerHTML=(data.actions||[]).map(a=>{let p={};try{p=JSON.parse(a.payload||"{}")}catch{}return '<div class="item"><div style="min-width:0"><b>Не отправлено</b><br><small>'+esc(p.channel||"сообщение")+' · '+esc(p.recipient_name||a.target||"—")+'</small><div style="margin-top:7px;white-space:pre-wrap">'+esc(p.text||"")+'</div></div><div class="itemActions"><button class="mini" data-copy-text="'+encodeURIComponent(p.text||"")+'">Копировать</button><button class="mini danger" data-action-reject="'+a.id+'">Отклонить</button></div></div>'}).join("")||"<small>Черновиков нет.</small>";
 }
 async function refreshData(){
   data=await api("/api/bootstrap");
@@ -205,11 +205,47 @@ $("#clientForm").onsubmit=async e=>{e.preventDefault();const name=$("#clientName
 $("#projectForm").onsubmit=async e=>{e.preventDefault();const name=$("#projectName").value.trim();if(!name)return;await api("/api/projects",{method:"POST",body:JSON.stringify({name})});$("#projectName").value="";await load();};
 $("#ideaForm").onsubmit=async e=>{e.preventDefault();const text=$("#ideaText").value.trim();if(!text)return;await api("/api/ideas",{method:"POST",body:JSON.stringify({text})});$("#ideaText").value="";await load();};
 
+async function copyText(text){
+  try{
+    await navigator.clipboard.writeText(text);
+    return true;
+  }catch{
+    const ta=document.createElement("textarea");
+    ta.value=text;
+    ta.style.position="fixed";
+    ta.style.opacity="0";
+    document.body.appendChild(ta);
+    ta.select();
+    const ok=document.execCommand("copy");
+    ta.remove();
+    return ok;
+  }
+}
+
 document.addEventListener("click",async e=>{
   const b=e.target.closest("button");if(!b)return;
   if(b.dataset.view){document.querySelectorAll(".panel").forEach(x=>x.classList.add("hidden"));$("#"+b.dataset.view).classList.remove("hidden");$("#"+b.dataset.view).scrollIntoView({behavior:"smooth"});}
   if(b.dataset.q){$("#message").value=b.dataset.q;$("#message").focus();}
-  if(b.dataset.task){await api("/api/tasks/"+b.dataset.task,{method:"PATCH",body:JSON.stringify({status:b.dataset.status})});await load();}
+  if(b.dataset.task){await api("/api/tasks/"+b.dataset.task,{method:"PATCH",body:JSON.stringify({status:b.dataset.status})});await refreshData();}
+  if(b.dataset.taskDelete){
+    const title=b.dataset.taskTitle||"эту задачу";
+    if(confirm('Удалить задачу «'+title+'»?')){
+      await api("/api/tasks/"+b.dataset.taskDelete,{method:"DELETE"});
+      await refreshData();
+    }
+  }
+  if(b.dataset.copyText!==undefined){
+    const text=decodeURIComponent(b.dataset.copyText||"");
+    const ok=await copyText(text);
+    b.textContent=ok?"Скопировано":"Не удалось";
+    setTimeout(()=>b.textContent="Копировать",1200);
+  }
+  if(b.dataset.actionReject){
+    if(confirm("Отклонить и убрать этот черновик?")){
+      await api("/api/actions/"+b.dataset.actionReject,{method:"PATCH",body:JSON.stringify({status:"rejected"})});
+      await refreshData();
+    }
+  }
 });
 boot();
 </script>
