@@ -1,0 +1,31 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.neurograf.workai'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'com.neurograf.workai'
+        minSdk 23
+        targetSdk 35
+        versionCode 500
+        versionName '0.5.0'
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            shrinkResources false
+        }
+        debug {
+            versionNameSuffix '-debug'
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
