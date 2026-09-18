@@ -55,3 +55,19 @@ jobs:
           name: EXCAVATOR_PRO_v15_13_8_RELEASE_ALIGNED_UNSIGNED_APK
           path: EXCAVATOR_PRO_v15_13_8_RELEASE_ALIGNED_UNSIGNED.apk
           retention-days: 90
+
+      - name: Export Android apksigner
+        shell: bash
+        run: |
+          set -euo pipefail
+          APKSIGNER_JAR="$(find "$ANDROID_HOME/build-tools" -type f -path '*/lib/apksigner.jar' | sort -V | tail -n 1)"
+          test -f "$APKSIGNER_JAR"
+          cp "$APKSIGNER_JAR" ./apksigner.jar
+          java -jar ./apksigner.jar --version
+
+      - name: Upload Android apksigner
+        uses: actions/upload-artifact@v4
+        with:
+          name: ANDROID_APKSIGNER_JAR
+          path: apksigner.jar
+          retention-days: 30
