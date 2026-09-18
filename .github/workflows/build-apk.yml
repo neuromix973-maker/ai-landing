@@ -1,4 +1,4 @@
-name: Build EXCAVATOR PRO APK
+name: Build EXCAVATOR PRO RELEASE APK
 
 on:
   workflow_dispatch:
@@ -37,15 +37,15 @@ jobs:
             cp /tmp/excavator_pro_icon.webp "app/src/main/res/mipmap-$d/excavator_pro_icon.webp"
           done
 
-      - name: Build debug APK
-        run: gradle :app:assembleDebug --no-daemon
+      - name: Build unsigned release APK
+        run: gradle :app:assembleRelease --no-daemon
 
-      - name: Rename APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk EXCAVATOR_PRO_v15_13_7_ICON_REAL.apk
+      - name: Rename unsigned APK
+        run: cp app/build/outputs/apk/release/app-release-unsigned.apk EXCAVATOR_PRO_v15_13_8_RELEASE_UNSIGNED.apk
 
-      - name: Upload APK
+      - name: Upload unsigned APK
         uses: actions/upload-artifact@v4
         with:
-          name: EXCAVATOR_PRO_v15_13_7_ICON_REAL_APK
-          path: EXCAVATOR_PRO_v15_13_7_ICON_REAL.apk
+          name: EXCAVATOR_PRO_v15_13_8_RELEASE_UNSIGNED_APK
+          path: EXCAVATOR_PRO_v15_13_8_RELEASE_UNSIGNED.apk
           retention-days: 90
