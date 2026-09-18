@@ -116,6 +116,7 @@ async function api(path,opt={}){
   return body;
 }
 function esc(v=""){return String(v).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]));}
+function formatDue(v){if(!v)return "без срока";const d=new Date(v);if(Number.isNaN(d.getTime()))return v;return new Intl.DateTimeFormat("ru-RU",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"}).format(d);}
 function msg(role,text){
   const d=document.createElement("div");d.className="msg "+(role==="user"?"user":"ai");d.textContent=text;$("#chat").appendChild(d);$("#chat").scrollTop=$("#chat").scrollHeight;
 }
@@ -125,7 +126,7 @@ function render(){
   $("#projectCount").textContent=data.projects.length+" проектов";
   $("#ideaCount").textContent=data.ideas.length+" идей";
   $("#actionCount").textContent=(data.actions||[]).length+" черновиков";
-  $("#tasksList").innerHTML=data.tasks.map(t=>'<div class="item '+(t.status==="done"?"done":"")+'"><div><b>'+esc(t.title)+'</b><br><small>'+esc(t.due_at||"без срока")+'</small></div><button class="mini" data-task="'+t.id+'" data-status="'+(t.status==="done"?"open":"done")+'">'+(t.status==="done"?"↩":"✓")+'</button></div>').join("")||"<small>Задач пока нет.</small>";
+  $("#tasksList").innerHTML=data.tasks.map(t=>'<div class="item '+(t.status==="done"?"done":"")+'"><div><b>'+esc(t.title)+'</b><br><small>'+esc(formatDue(t.due_at))+'</small></div><button class="mini" data-task="'+t.id+'" data-status="'+(t.status==="done"?"open":"done")+'">'+(t.status==="done"?"↩":"✓")+'</button></div>').join("")||"<small>Задач пока нет.</small>";
   $("#clientsList").innerHTML=data.clients.map(c=>'<div class="item"><div><b>'+esc(c.name)+'</b><br><small>'+esc(c.project||"без проекта")+(c.phone?" · "+esc(c.phone):"")+'</small></div></div>').join("")||"<small>Клиентов пока нет.</small>";
   $("#projectsList").innerHTML=data.projects.map(p=>'<div class="item"><div><b>'+esc(p.name)+'</b><br><small>'+esc(p.status)+'</small></div></div>').join("")||"<small>Проектов пока нет.</small>";
   $("#ideasList").innerHTML=data.ideas.map(i=>'<div class="item"><div>'+esc(i.text)+'</div></div>').join("")||"<small>Идей пока нет.</small>";
