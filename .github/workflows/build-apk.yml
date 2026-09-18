@@ -23,18 +23,18 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Restore final EXCAVATOR PRO icon
+      - name: Restore verified EXCAVATOR PRO icon
         shell: bash
         run: |
           set -euo pipefail
-          cat             .github/icon_parts/part1.b64             .github/icon_parts/part1_tail.b64             .github/icon_parts/part2.b64             .github/icon_parts/part2_tail.b64             .github/icon_parts/part3.b64             .github/icon_parts/part4.b64             .github/icon_parts/part5.b64             > /tmp/excavator_icon.b64
-          test "$(wc -c < /tmp/excavator_icon.b64)" -eq 42192
-          base64 -d /tmp/excavator_icon.b64 > /tmp/excavator_pro_icon.png
-          echo "3b9140e99bb0ee1e3e75ee8acf05b048c40d82429b63d9fd2301258e7890603d  /tmp/excavator_pro_icon.png" | sha256sum -c -
-          file /tmp/excavator_pro_icon.png
+          cat             .github/icon_webp/q70_1.b64             .github/icon_webp/q70_2.b64             .github/icon_webp/q70_3.b64             > /tmp/excavator_icon.b64
+          test "$(wc -c < /tmp/excavator_icon.b64)" -eq 10440
+          base64 -d /tmp/excavator_icon.b64 > /tmp/excavator_pro_icon.webp
+          echo "3a7ec9556c05746e6398a35f5f4255c3091f4d2a3315905cf62a5f87138fa33e  /tmp/excavator_pro_icon.webp" | sha256sum -c -
+          file /tmp/excavator_pro_icon.webp
           for d in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
             mkdir -p "app/src/main/res/mipmap-$d"
-            cp /tmp/excavator_pro_icon.png "app/src/main/res/mipmap-$d/excavator_pro_icon.png"
+            cp /tmp/excavator_pro_icon.webp "app/src/main/res/mipmap-$d/excavator_pro_icon.webp"
           done
 
       - name: Build debug APK
