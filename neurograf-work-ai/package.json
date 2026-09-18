@@ -1,0 +1,11 @@
+{
+  "name": "neurograf-work-ai",
+  "private": true,
+  "version": "0.5.0-bootstrap",
+  "devDependencies": {
+    "wrangler": "^4.20.0"
+  },
+  "scripts": {
+    "deploy": "wrangler deploy"
+  }
+}

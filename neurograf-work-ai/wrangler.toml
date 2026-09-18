@@ -1,0 +1,8 @@
+name = "neurograf-work-ai"
+main = "src/worker.js"
+compatibility_date = "2026-09-18"
+
+[assets]
+directory = "./public"
+binding = "ASSETS"
+run_worker_first = ["/api/*"]
