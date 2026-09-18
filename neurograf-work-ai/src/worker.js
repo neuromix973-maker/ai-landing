@@ -152,12 +152,12 @@ function extractText(data){
 
 async function appContext(DB){
   const [tasks,clients,projects,ideas,history,actions] = await Promise.all([
-    DB.prepare("SELECT id,title,details,status,due_at,project_id,client_id FROM tasks ORDER BY CASE WHEN status='open' THEN 0 ELSE 1 END, id DESC LIMIT 30").all(),
-    DB.prepare("SELECT id,name,phone,messenger,project,notes FROM clients ORDER BY id DESC LIMIT 30").all(),
-    DB.prepare("SELECT id,name,status,notes FROM projects ORDER BY id DESC LIMIT 30").all(),
-    DB.prepare("SELECT id,text,project_id,created_at FROM ideas ORDER BY id DESC LIMIT 20").all(),
-    DB.prepare("SELECT role,content,created_at FROM conversations ORDER BY id DESC LIMIT 12").all(),
-    DB.prepare("SELECT id,action_type,target,payload,status,created_at FROM actions WHERE status='pending' ORDER BY id DESC LIMIT 20").all()
+    DB.prepare("SELECT id,title,details,status,due_at,project_id,client_id FROM tasks ORDER BY CASE WHEN status='open' THEN 0 ELSE 1 END, id DESC LIMIT 15").all(),
+    DB.prepare("SELECT id,name,phone,messenger,project,notes FROM clients ORDER BY id DESC LIMIT 15").all(),
+    DB.prepare("SELECT id,name,status,notes FROM projects ORDER BY id DESC LIMIT 15").all(),
+    DB.prepare("SELECT id,text,project_id,created_at FROM ideas ORDER BY id DESC LIMIT 10").all(),
+    DB.prepare("SELECT role,content,created_at FROM conversations ORDER BY id DESC LIMIT 8").all(),
+    DB.prepare("SELECT id,action_type,target,payload,status,created_at FROM actions WHERE status='pending' ORDER BY id DESC LIMIT 10").all()
   ]);
   return {
     tasks:tasks.results||[],
@@ -264,17 +264,40 @@ const MIRA_TOOLS = [
 ];
 
 async function openAI(env, payload){
-  const r=await fetch("https://api.openai.com/v1/responses",{
-    method:"POST",
-    headers:{"Authorization":"Bearer "+env.OPENAI_API_KEY,"Content-Type":"application/json"},
-    body:JSON.stringify(payload)
-  });
-  const data=await r.json().catch(()=>({}));
+  async function send(body){
+    const r=await fetch("https://api.openai.com/v1/responses",{
+      method:"POST",
+      headers:{"Authorization":"Bearer "+env.OPENAI_API_KEY,"Content-Type":"application/json"},
+      body:JSON.stringify(body)
+    });
+    const data=await r.json().catch(()=>({}));
+    return {r,data};
+  }
+
+  const primary={...payload};
+  if(primary.max_output_tokens==null) primary.max_output_tokens=1600;
+  if(primary.reasoning==null) primary.reasoning={effort:"none"};
+
+  let {r,data}=await send(primary);
+  let usedModel=primary.model;
+
+  if(r.status===429 && primary.model==="gpt-5.6-luna"){
+    const fallback={...primary,model:"gpt-5.6-terra"};
+    ({r,data}=await send(fallback));
+    usedModel="gpt-5.6-terra";
+  }
+
   if(!r.ok){
-    const err=new Error(data?.error?.message||"OpenAI error");
-    err.detail=data?.error?.message||"unknown";
+    const msg=data?.error?.message||"OpenAI error";
+    const err=new Error(msg);
+    err.detail=(r.status===429)
+      ?"Сейчас достигнут лимит AI-моделей OpenAI. Подождите немного и повторите запрос."
+      :msg;
+    err.status=r.status;
     throw err;
   }
+
+  data._mira_model=usedModel;
   return data;
 }
 
@@ -386,7 +409,7 @@ async function routeApi(request, env, url){
       ok:schema.ok,
       app:"NEUROGRAF WORK AI",
       assistant:"Мира",
-      version:"0.8-actions",
+      version:"0.8.1-fallback",
       database:schema.ok?"ready":"missing",
       schema:schema.schema||null,
       owner_password:Boolean(env.OWNER_PASSWORD),
@@ -492,8 +515,9 @@ async function routeApi(request, env, url){
     const localTime=String(b.client_local_time||"").slice(0,160);
 
     try{
+      let activeModel=env.OPENAI_CHAT_MODEL||"gpt-5.6-luna";
       let response=await openAI(env,{
-        model:env.OPENAI_CHAT_MODEL||"gpt-5.6-luna",
+        model:activeModel,
         instructions:SYSTEM,
         tools:MIRA_TOOLS,
         input:"Текущее локальное время пользователя: "+(localTime||"не передано")+
@@ -501,6 +525,7 @@ async function routeApi(request, env, url){
           "\n\nЗапрос пользователя:\n"+message
       });
 
+      activeModel=response._mira_model||response.model||activeModel;
       const toolResults=[];
       for(let round=0;round<3;round++){
         const calls=(Array.isArray(response.output)?response.output:[]).filter(x=>x?.type==="function_call");
@@ -520,12 +545,13 @@ async function routeApi(request, env, url){
         }
 
         response=await openAI(env,{
-          model:env.OPENAI_CHAT_MODEL||"gpt-5.6-luna",
+          model:activeModel,
           instructions:SYSTEM,
           tools:MIRA_TOOLS,
           previous_response_id:response.id,
           input:outputs
         });
+        activeModel=response._mira_model||response.model||activeModel;
       }
 
       const answer=extractText(response)||"Готово.";
