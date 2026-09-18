@@ -23,15 +23,29 @@ jobs:
         with:
           gradle-version: '8.9'
 
+      - name: Restore final EXCAVATOR PRO icon
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat .github/icon_parts/part1.b64               .github/icon_parts/part2.b64               .github/icon_parts/part3.b64               .github/icon_parts/part4.b64               .github/icon_parts/part5.b64 > /tmp/excavator_icon.b64
+          base64 -d /tmp/excavator_icon.b64 > /tmp/excavator_pro_icon.png
+          echo "Icon checksum:"
+          sha256sum /tmp/excavator_pro_icon.png
+          file /tmp/excavator_pro_icon.png
+          for d in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
+            mkdir -p "app/src/main/res/mipmap-$d"
+            cp /tmp/excavator_pro_icon.png "app/src/main/res/mipmap-$d/excavator_pro_icon.png"
+          done
+
       - name: Build debug APK
         run: gradle :app:assembleDebug --no-daemon
 
       - name: Rename APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk EXCAVATOR_PRO_v15_13_6_ICON_COMPILED.apk
+        run: cp app/build/outputs/apk/debug/app-debug.apk EXCAVATOR_PRO_v15_13_7_ICON_REAL.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: EXCAVATOR_PRO_v15_13_6_ICON_COMPILED_APK
-          path: EXCAVATOR_PRO_v15_13_6_ICON_COMPILED.apk
+          name: EXCAVATOR_PRO_v15_13_7_ICON_REAL_APK
+          path: EXCAVATOR_PRO_v15_13_7_ICON_REAL.apk
           retention-days: 90
