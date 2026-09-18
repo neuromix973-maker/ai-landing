@@ -10,8 +10,8 @@ android {
         applicationId 'com.neurograf.excavatorpro'
         minSdk 23
         targetSdk 35
-        versionCode 151307
-        versionName '15.13.7'
+        versionCode 151308
+        versionName '15.13.8'
     }
 
     buildTypes {
