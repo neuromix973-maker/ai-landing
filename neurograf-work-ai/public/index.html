@@ -6,18 +6,199 @@
 <meta name="theme-color" content="#050505">
 <title>NEUROGRAF WORK AI — Мира</title>
 <style>
-body{margin:0;background:#050505;color:#f5f5f5;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;display:grid;min-height:100vh;place-items:center}
-.card{max-width:520px;margin:20px;padding:28px;border:1px solid #443817;border-radius:28px;background:linear-gradient(180deg,#17130a,#090909);box-shadow:0 20px 60px #000}
-.logo{width:76px;height:76px;border-radius:50%;display:grid;place-items:center;margin:auto;background:linear-gradient(145deg,#1d1604,#d4af37);color:#050505;font-size:36px;font-weight:900}
-h1{text-align:center;color:#f3d779;margin:18px 0 4px}.sub{text-align:center;color:#aaa;margin:0 0 22px}.ok{padding:14px;border-radius:16px;background:#0c0c0c;border:1px solid #302817}.gold{color:#d4af37;font-weight:800}
+:root{--bg:#050505;--card:#101011;--line:#332b18;--gold:#d4af37;--gold2:#f3d779;--text:#f5f5f5;--muted:#a5a5a5}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 50% -10%,#2a2108 0,#080808 32%,#050505 62%);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+.wrap{max-width:760px;margin:auto;padding:14px;min-height:100vh}.top{display:flex;justify-content:space-between;gap:10px;align-items:center;padding:8px 2px 14px}.brand{font-weight:900;color:var(--gold2);letter-spacing:.06em}.sub{font-size:12px;color:var(--muted);margin-top:3px}.badge{font-size:11px;border:1px solid #3a321e;border-radius:20px;padding:7px 9px;color:var(--gold2)}
+.card{background:linear-gradient(180deg,rgba(20,20,22,.97),rgba(9,9,10,.99));border:1px solid var(--line);border-radius:22px;padding:16px;margin-bottom:12px;box-shadow:0 12px 38px #0008}
+.login{max-width:420px;margin:12vh auto}.logo{width:72px;height:72px;border-radius:50%;display:grid;place-items:center;margin:0 auto 12px;background:linear-gradient(145deg,#211906,#d4af37);color:#050505;font-size:34px;font-weight:900}.center{text-align:center}
+input,textarea{width:100%;background:#070708;border:1px solid #303034;color:#fff;border-radius:14px;padding:12px;outline:none}input:focus,textarea:focus{border-color:#8b742a}
+button{cursor:pointer}.gold{border:0;background:linear-gradient(90deg,#b58b1c,#f0d36b);color:#060606;font-weight:900;border-radius:14px;padding:13px 15px}.wide{width:100%}.hero{text-align:center;padding:22px 16px}.hero h1{margin:8px 0 3px;color:var(--gold2)}.hero p{color:#c9c9c9;margin:0 0 16px}.voice{font-size:17px;padding:16px}.hint{font-size:12px;color:var(--muted);margin-top:8px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:12px}.tile{background:#0d0d0e;border:1px solid var(--line);border-radius:17px;padding:14px;color:#eee;text-align:left}.tile b{color:var(--gold2);display:block;margin-bottom:5px}.tile span{font-size:12px;color:#999}
+.title{font-weight:900;color:var(--gold2);margin-bottom:10px}.chat{min-height:140px;max-height:42vh;overflow:auto}.msg{padding:11px 12px;margin:7px 0;border-radius:15px;white-space:pre-wrap;line-height:1.42}.user{background:#241e0f;margin-left:14%}.ai{background:#141416;border:1px solid #252525;margin-right:8%}
+.compose{display:flex;gap:8px;align-items:end;margin-top:10px}.compose textarea{min-height:48px}.row{display:flex;gap:8px}.stack{display:grid;gap:8px}.list{display:grid;gap:7px;margin-top:10px}.item{display:flex;justify-content:space-between;gap:8px;align-items:center;padding:10px 12px;background:#09090a;border:1px solid #242424;border-radius:13px}.item small{color:#999}.mini{border:1px solid #3a321d;background:#111;color:#ddd;border-radius:10px;padding:7px 9px}.done{opacity:.55;text-decoration:line-through}.hidden{display:none!important}.err{color:#ff8b8b;font-size:13px;margin-top:9px}.quick{display:grid;grid-template-columns:1fr 1fr;gap:8px}.quick button{background:#111;border:1px solid #30291a;color:#eee;border-radius:13px;padding:12px}.logout{background:none;border:0;color:#888;font-size:12px}
+@media(max-width:520px){.wrap{padding:11px}.compose{flex-direction:column}.compose .gold{width:100%}}
 </style>
 </head>
 <body>
-<div class="card">
-  <div class="logo">М</div>
-  <h1>МИРА</h1>
-  <p class="sub">NEUROGRAF WORK AI</p>
-  <div class="ok"><span class="gold">Сервер приложения создан.</span><br><br>Сейчас подключаем базу данных, защищённый вход, AI и голос. После следующего обновления здесь откроется полноценный рабочий интерфейс Миры.</div>
+<div class="wrap">
+  <section id="login" class="card login">
+    <div class="logo">М</div>
+    <h2 class="center">МИРА</h2>
+    <p class="center sub">NEUROGRAF WORK AI · вход владельца</p>
+    <form id="loginForm" class="stack">
+      <input id="password" type="password" placeholder="Пароль владельца" autocomplete="current-password">
+      <button class="gold wide">Войти</button>
+    </form>
+    <div id="loginErr" class="err"></div>
+  </section>
+
+  <div id="app" class="hidden">
+    <header class="top">
+      <div><div class="brand">NEUROGRAF WORK AI</div><div class="sub">МИРА · личный AI-ассистент</div></div>
+      <div><span id="status" class="badge">проверка…</span> <button id="logout" class="logout">Выйти</button></div>
+    </header>
+
+    <section class="card hero">
+      <div class="logo">М</div>
+      <h1>Мира</h1>
+      <p>Чем займёмся сегодня?</p>
+      <button id="talk" class="gold wide voice">🎙 Поговорить с Мирой</button>
+      <div id="voiceState" class="hint">Нажмите и говорите обычными словами.</div>
+    </section>
+
+    <section class="grid">
+      <button class="tile" data-view="tasks"><b>✅ Сегодня</b><span id="taskCount">0 задач</span></button>
+      <button class="tile" data-view="clients"><b>👥 Клиенты</b><span id="clientCount">0 клиентов</span></button>
+      <button class="tile" data-view="projects"><b>🚀 Проекты</b><span id="projectCount">0 проектов</span></button>
+      <button class="tile" data-view="ideas"><b>💡 Идеи</b><span id="ideaCount">0 идей</span></button>
+    </section>
+
+    <section class="card">
+      <div class="title">Спросить Миру</div>
+      <div id="chat" class="chat"></div>
+      <div class="compose">
+        <textarea id="message" rows="2" placeholder="Например: что у меня сегодня?"></textarea>
+        <button id="send" class="gold">Отправить</button>
+      </div>
+      <div class="quick">
+        <button data-q="Напиши короткий пост для MAX. Сначала уточни тему, если её нет в контексте.">Пост для MAX</button>
+        <button data-q="Подготовь вежливое сообщение клиенту. Если клиент не указан, уточни кому.">Сообщение клиенту</button>
+        <button data-q="Сделай подробный промт для генерации изображения на русском языке.">Промт изображения</button>
+        <button data-q="Помоги составить план работы на сегодня по моим задачам.">План на сегодня</button>
+      </div>
+    </section>
+
+    <section id="tasks" class="card panel">
+      <div class="title">Сегодня</div>
+      <form id="taskForm" class="row"><input id="taskTitle" placeholder="Новая задача"><button class="gold">Добавить</button></form>
+      <div id="tasksList" class="list"></div>
+    </section>
+
+    <section id="clients" class="card panel hidden">
+      <div class="title">Клиенты</div>
+      <form id="clientForm" class="stack">
+        <input id="clientName" placeholder="Имя / компания">
+        <input id="clientPhone" placeholder="Телефон или мессенджер">
+        <input id="clientProject" placeholder="Проект">
+        <button class="gold">Сохранить клиента</button>
+      </form>
+      <div id="clientsList" class="list"></div>
+    </section>
+
+    <section id="projects" class="card panel hidden">
+      <div class="title">Проекты</div>
+      <form id="projectForm" class="row"><input id="projectName" placeholder="Название проекта"><button class="gold">Добавить</button></form>
+      <div id="projectsList" class="list"></div>
+    </section>
+
+    <section id="ideas" class="card panel hidden">
+      <div class="title">Идеи</div>
+      <form id="ideaForm" class="row"><input id="ideaText" placeholder="Запомнить идею"><button class="gold">Сохранить</button></form>
+      <div id="ideasList" class="list"></div>
+    </section>
+  </div>
 </div>
+<script>
+const $=s=>document.querySelector(s);
+let data={tasks:[],clients:[],projects:[],ideas:[],history:[]};
+
+async function api(path,opt={}){
+  const r=await fetch(path,{credentials:"same-origin",...opt,headers:{"Content-Type":"application/json",...(opt.headers||{})}});
+  const ct=r.headers.get("content-type")||"";
+  const body=ct.includes("application/json")?await r.json():await r.blob();
+  if(!r.ok) throw Object.assign(new Error(body?.error||("HTTP "+r.status)),{status:r.status,body});
+  return body;
+}
+function esc(v=""){return String(v).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]));}
+function msg(role,text){
+  const d=document.createElement("div");d.className="msg "+(role==="user"?"user":"ai");d.textContent=text;$("#chat").appendChild(d);$("#chat").scrollTop=$("#chat").scrollHeight;
+}
+function render(){
+  $("#taskCount").textContent=data.tasks.filter(x=>x.status!=="done").length+" задач";
+  $("#clientCount").textContent=data.clients.length+" клиентов";
+  $("#projectCount").textContent=data.projects.length+" проектов";
+  $("#ideaCount").textContent=data.ideas.length+" идей";
+  $("#tasksList").innerHTML=data.tasks.map(t=>'<div class="item '+(t.status==="done"?"done":"")+'"><div><b>'+esc(t.title)+'</b><br><small>'+esc(t.due_at||"без срока")+'</small></div><button class="mini" data-task="'+t.id+'" data-status="'+(t.status==="done"?"open":"done")+'">'+(t.status==="done"?"↩":"✓")+'</button></div>').join("")||"<small>Задач пока нет.</small>";
+  $("#clientsList").innerHTML=data.clients.map(c=>'<div class="item"><div><b>'+esc(c.name)+'</b><br><small>'+esc(c.project||"без проекта")+(c.phone?" · "+esc(c.phone):"")+'</small></div></div>').join("")||"<small>Клиентов пока нет.</small>";
+  $("#projectsList").innerHTML=data.projects.map(p=>'<div class="item"><div><b>'+esc(p.name)+'</b><br><small>'+esc(p.status)+'</small></div></div>').join("")||"<small>Проектов пока нет.</small>";
+  $("#ideasList").innerHTML=data.ideas.map(i=>'<div class="item"><div>'+esc(i.text)+'</div></div>').join("")||"<small>Идей пока нет.</small>";
+}
+async function load(){
+  data=await api("/api/bootstrap");
+  render();
+  $("#chat").innerHTML="";
+  for(const h of data.history||[]) msg(h.role,h.content);
+  if(!(data.history||[]).length) msg("assistant","Я Мира. Могу помочь с задачами, клиентами, проектами, текстами и идеями.");
+}
+async function boot(){
+  try{
+    const s=await api("/api/session");
+    if(s.authenticated){
+      $("#login").classList.add("hidden");$("#app").classList.remove("hidden");
+      const h=await api("/api/health");
+      $("#status").textContent=h.openai?"AI готов":"AI без ключа";
+      await load();
+    }else{$("#login").classList.remove("hidden");$("#app").classList.add("hidden");}
+  }catch(e){$("#loginErr").textContent="Не удалось связаться с сервером.";}
+}
+$("#loginForm").onsubmit=async e=>{
+  e.preventDefault();$("#loginErr").textContent="";
+  try{
+    await api("/api/login-cookie",{method:"POST",body:JSON.stringify({password:$("#password").value})});
+    $("#password").value="";await boot();
+  }catch(e){$("#loginErr").textContent=e.body?.error||"Не удалось войти";}
+};
+$("#logout").onclick=async()=>{await api("/api/logout",{method:"POST",body:"{}"});location.reload();};
+
+async function ask(text,speak=true){
+  text=(text||"").trim();if(!text)return;
+  msg("user",text);$("#message").value="";$("#send").disabled=true;
+  try{
+    const r=await api("/api/chat",{method:"POST",body:JSON.stringify({message:text})});
+    msg("assistant",r.answer);
+    if(speak) await speak(r.answer);
+  }catch(e){msg("assistant","Ошибка: "+(e.body?.detail||e.body?.error||e.message));}
+  finally{$("#send").disabled=false;}
+}
+async function speak(text){
+  try{
+    const r=await fetch("/api/tts",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:text.slice(0,3500)})});
+    if(!r.ok) throw new Error();
+    const b=await r.blob(),u=URL.createObjectURL(b),a=new Audio(u);a.onended=()=>URL.revokeObjectURL(u);await a.play();
+  }catch{
+    if("speechSynthesis" in window){
+      const u=new SpeechSynthesisUtterance(text);u.lang="ru-RU";u.rate=.9;speechSynthesis.cancel();speechSynthesis.speak(u);
+    }
+  }
+}
+$("#send").onclick=()=>ask($("#message").value,true);
+$("#message").onkeydown=e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();ask($("#message").value,true)}};
+
+window.onMiraNativeSpeech=t=>{ $("#voiceState").textContent="Распознано: "+t; ask(t,true); };
+window.onMiraNativeSpeechError=t=>{ $("#voiceState").textContent=t; };
+function listen(){
+  if(window.MiraAndroid?.startListening){$("#voiceState").textContent="Слушаю…";window.MiraAndroid.startListening();return;}
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SR){$("#voiceState").textContent="Голосовой ввод недоступен. Напишите Мире текстом.";return;}
+  const r=new SR();r.lang="ru-RU";r.interimResults=false;$("#voiceState").textContent="Слушаю…";
+  r.onresult=e=>{const t=e.results[0][0].transcript;$("#voiceState").textContent="Распознано: "+t;ask(t,true)};
+  r.onerror=()=>$("#voiceState").textContent="Не удалось распознать речь.";
+  r.start();
+}
+$("#talk").onclick=listen;
+
+$("#taskForm").onsubmit=async e=>{e.preventDefault();const title=$("#taskTitle").value.trim();if(!title)return;await api("/api/tasks",{method:"POST",body:JSON.stringify({title})});$("#taskTitle").value="";await load();};
+$("#clientForm").onsubmit=async e=>{e.preventDefault();const name=$("#clientName").value.trim();if(!name)return;await api("/api/clients",{method:"POST",body:JSON.stringify({name,phone:$("#clientPhone").value,project:$("#clientProject").value})});e.target.reset();await load();};
+$("#projectForm").onsubmit=async e=>{e.preventDefault();const name=$("#projectName").value.trim();if(!name)return;await api("/api/projects",{method:"POST",body:JSON.stringify({name})});$("#projectName").value="";await load();};
+$("#ideaForm").onsubmit=async e=>{e.preventDefault();const text=$("#ideaText").value.trim();if(!text)return;await api("/api/ideas",{method:"POST",body:JSON.stringify({text})});$("#ideaText").value="";await load();};
+
+document.addEventListener("click",async e=>{
+  const b=e.target.closest("button");if(!b)return;
+  if(b.dataset.view){document.querySelectorAll(".panel").forEach(x=>x.classList.add("hidden"));$("#"+b.dataset.view).classList.remove("hidden");$("#"+b.dataset.view).scrollIntoView({behavior:"smooth"});}
+  if(b.dataset.q){$("#message").value=b.dataset.q;$("#message").focus();}
+  if(b.dataset.task){await api("/api/tasks/"+b.dataset.task,{method:"PATCH",body:JSON.stringify({status:b.dataset.status})});await load();}
+});
+boot();
+</script>
 </body>
 </html>
