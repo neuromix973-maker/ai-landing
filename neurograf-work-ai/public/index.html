@@ -150,13 +150,13 @@ $("#loginForm").onsubmit=async e=>{
 };
 $("#logout").onclick=async()=>{await api("/api/logout",{method:"POST",body:"{}"});location.reload();};
 
-async function ask(text,speak=true){
+async function ask(text,shouldSpeak=true){
   text=(text||"").trim();if(!text)return;
   msg("user",text);$("#message").value="";$("#send").disabled=true;
   try{
     const r=await api("/api/chat",{method:"POST",body:JSON.stringify({message:text})});
     msg("assistant",r.answer);
-    if(speak) await speak(r.answer);
+    if(shouldSpeak) await speak(r.answer);
   }catch(e){msg("assistant","Ошибка: "+(e.body?.detail||e.body?.error||e.message));}
   finally{$("#send").disabled=false;}
 }
