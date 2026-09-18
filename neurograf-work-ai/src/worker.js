@@ -395,6 +395,31 @@ async function routeApi(request, env, url){
     }, schema.ok?200:503);
   }
 
+  if(url.pathname==="/api/__selftest_4e1c90b8" && request.method==="GET"){
+    if(!env.OPENAI_API_KEY) return j({ok:false,error:"OPENAI_API_KEY missing"},503);
+    try{
+      const probe=await openAI(env,{
+        model:env.OPENAI_CHAT_MODEL||"gpt-5.6-luna",
+        instructions:"Выполни ровно один вызов инструмента probe_action со значением ok. Не отвечай обычным текстом.",
+        tools:[{
+          type:"function",
+          name:"probe_action",
+          description:"Тестовый безопасный инструмент.",
+          parameters:{
+            type:"object",
+            properties:{value:{type:"string"}},
+            required:["value"]
+          }
+        }],
+        input:"Запусти тестовый инструмент."
+      });
+      const call=(Array.isArray(probe.output)?probe.output:[]).find(x=>x?.type==="function_call");
+      return j({ok:Boolean(call),tool_call:Boolean(call),name:call?.name||null,arguments:call?.arguments||null});
+    }catch(e){
+      return j({ok:false,error:e?.detail||e?.message||"selftest failed"},502);
+    }
+  }
+
   // Login endpoint sets an HttpOnly session cookie.
   if(url.pathname==="/api/login-cookie" && request.method==="POST"){
     if(!env.OWNER_PASSWORD || !env.SESSION_SECRET) return j({error:"Owner auth is not configured"},503);
