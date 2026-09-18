@@ -68,6 +68,9 @@ const SYSTEM = `
 Используй переданный контекст приложения. Не выдумывай отсутствующие факты.
 Если пользователь просит отправить сообщение, опубликовать что-либо, удалить данные или выполнить другое внешнее/необратимое действие, подготовь результат, но не утверждай, что действие уже выполнено. Такие действия требуют отдельного подтверждения и реального серверного действия.
 Если ответ предназначен для чтения вслух, пиши естественно, короткими фразами.
+Если пользователь просит создать задачу, сохранить идею, добавить клиента или проект — обязательно используй соответствующий инструмент, а не только отвечай текстом.
+Если пользователь спрашивает о задачах или просит найти клиента — используй инструмент, чтобы получить актуальные данные.
+Если пользователь просит отправить сообщение во внешний сервис, разрешено только подготовить черновик через draft_message. Никогда не говори, что черновик отправлен.
 `;
 
 function j(data, status=200, extra={}) {
@@ -80,8 +83,8 @@ function j(data, status=200, extra={}) {
 async function ensureSchema(DB) {
   if (!DB) return {ok:false,error:"DB binding missing"};
   for (const sql of SCHEMA) await DB.prepare(sql).run();
-  await DB.prepare("INSERT OR REPLACE INTO app_meta (key,value,updated_at) VALUES ('schema_version','0.7',CURRENT_TIMESTAMP)").run();
-  return {ok:true,schema:"0.7"};
+  await DB.prepare("INSERT OR REPLACE INTO app_meta (key,value,updated_at) VALUES ('schema_version','0.8',CURRENT_TIMESTAMP)").run();
+  return {ok:true,schema:"0.8"};
 }
 
 function b64url(bytes) {
@@ -148,14 +151,231 @@ function extractText(data){
 }
 
 async function appContext(DB){
-  const [tasks,clients,projects,ideas,history] = await Promise.all([
+  const [tasks,clients,projects,ideas,history,actions] = await Promise.all([
     DB.prepare("SELECT id,title,details,status,due_at,project_id,client_id FROM tasks ORDER BY CASE WHEN status='open' THEN 0 ELSE 1 END, id DESC LIMIT 30").all(),
     DB.prepare("SELECT id,name,phone,messenger,project,notes FROM clients ORDER BY id DESC LIMIT 30").all(),
     DB.prepare("SELECT id,name,status,notes FROM projects ORDER BY id DESC LIMIT 30").all(),
     DB.prepare("SELECT id,text,project_id,created_at FROM ideas ORDER BY id DESC LIMIT 20").all(),
-    DB.prepare("SELECT role,content,created_at FROM conversations ORDER BY id DESC LIMIT 12").all()
+    DB.prepare("SELECT role,content,created_at FROM conversations ORDER BY id DESC LIMIT 12").all(),
+    DB.prepare("SELECT id,action_type,target,payload,status,created_at FROM actions WHERE status='pending' ORDER BY id DESC LIMIT 20").all()
   ]);
-  return {tasks:tasks.results||[],clients:clients.results||[],projects:projects.results||[],ideas:ideas.results||[],history:(history.results||[]).reverse()};
+  return {
+    tasks:tasks.results||[],
+    clients:clients.results||[],
+    projects:projects.results||[],
+    ideas:ideas.results||[],
+    history:(history.results||[]).reverse(),
+    actions:actions.results||[]
+  };
+}
+
+
+const MIRA_TOOLS = [
+  {
+    type:"function",
+    name:"create_task",
+    description:"Создать новую рабочую задачу в приложении. Используй, когда пользователь явно просит добавить, создать, записать или запланировать задачу.",
+    parameters:{
+      type:"object",
+      properties:{
+        title:{type:"string",description:"Короткое название задачи"},
+        details:{type:"string",description:"Дополнительные детали"},
+        due_at:{type:"string",description:"Срок в ISO 8601, если пользователь указал дату или время"},
+        client_name:{type:"string",description:"Имя клиента, если задача связана с клиентом"},
+        project_name:{type:"string",description:"Название проекта, если задача связана с проектом"}
+      },
+      required:["title"]
+    }
+  },
+  {
+    type:"function",
+    name:"save_idea",
+    description:"Сохранить идею пользователя в приложении.",
+    parameters:{
+      type:"object",
+      properties:{
+        text:{type:"string",description:"Текст идеи"},
+        project_name:{type:"string",description:"Название проекта, если идея относится к проекту"}
+      },
+      required:["text"]
+    }
+  },
+  {
+    type:"function",
+    name:"list_tasks",
+    description:"Получить актуальный список задач пользователя.",
+    parameters:{
+      type:"object",
+      properties:{
+        status:{type:"string",enum:["open","done","all"],description:"Какие задачи показать"}
+      }
+    }
+  },
+  {
+    type:"function",
+    name:"find_client",
+    description:"Найти клиента по имени, компании, телефону или проекту.",
+    parameters:{
+      type:"object",
+      properties:{query:{type:"string",description:"Что искать"}},
+      required:["query"]
+    }
+  },
+  {
+    type:"function",
+    name:"create_client",
+    description:"Добавить нового клиента в приложение.",
+    parameters:{
+      type:"object",
+      properties:{
+        name:{type:"string"},
+        phone:{type:"string"},
+        messenger:{type:"string"},
+        project:{type:"string"},
+        notes:{type:"string"}
+      },
+      required:["name"]
+    }
+  },
+  {
+    type:"function",
+    name:"create_project",
+    description:"Создать новый проект.",
+    parameters:{
+      type:"object",
+      properties:{name:{type:"string"},notes:{type:"string"}},
+      required:["name"]
+    }
+  },
+  {
+    type:"function",
+    name:"draft_message",
+    description:"Создать черновик внешнего сообщения. Это НЕ отправка. Используй, если пользователь просит написать или отправить сообщение клиенту, в MAX, WhatsApp, email или другой внешний канал.",
+    parameters:{
+      type:"object",
+      properties:{
+        recipient_name:{type:"string",description:"Кому предназначено сообщение"},
+        channel:{type:"string",enum:["max","whatsapp","email","sms","other"]},
+        text:{type:"string",description:"Готовый текст сообщения"}
+      },
+      required:["recipient_name","channel","text"]
+    }
+  }
+];
+
+async function openAI(env, payload){
+  const r=await fetch("https://api.openai.com/v1/responses",{
+    method:"POST",
+    headers:{"Authorization":"Bearer "+env.OPENAI_API_KEY,"Content-Type":"application/json"},
+    body:JSON.stringify(payload)
+  });
+  const data=await r.json().catch(()=>({}));
+  if(!r.ok){
+    const err=new Error(data?.error?.message||"OpenAI error");
+    err.detail=data?.error?.message||"unknown";
+    throw err;
+  }
+  return data;
+}
+
+async function findClientByName(DB,name){
+  if(!name) return null;
+  const q="%"+String(name).trim().slice(0,200)+"%";
+  return await DB.prepare("SELECT id,name,phone,messenger,project,notes FROM clients WHERE lower(name) LIKE lower(?) OR lower(COALESCE(project,'')) LIKE lower(?) ORDER BY id DESC LIMIT 1").bind(q,q).first();
+}
+
+async function findProjectByName(DB,name){
+  if(!name) return null;
+  const q="%"+String(name).trim().slice(0,200)+"%";
+  return await DB.prepare("SELECT id,name,status,notes FROM projects WHERE lower(name) LIKE lower(?) ORDER BY id DESC LIMIT 1").bind(q).first();
+}
+
+async function executeMiraTool(name,args,env){
+  const DB=env.DB;
+  if(name==="create_task"){
+    const title=String(args.title||"").trim().slice(0,500);
+    if(!title) return {ok:false,error:"Не указано название задачи"};
+    const client=await findClientByName(DB,args.client_name);
+    const project=await findProjectByName(DB,args.project_name);
+    const due=String(args.due_at||"").trim().slice(0,100)||null;
+    const details=String(args.details||"").trim().slice(0,4000)||null;
+    const r=await DB.prepare("INSERT INTO tasks(title,details,due_at,project_id,client_id) VALUES(?,?,?,?,?)")
+      .bind(title,details,due,project?.id||null,client?.id||null).run();
+    return {ok:true,action:"task_created",id:r.meta?.last_row_id||null,title,due_at:due,client:client?.name||null,project:project?.name||null};
+  }
+
+  if(name==="save_idea"){
+    const text=String(args.text||"").trim().slice(0,6000);
+    if(!text) return {ok:false,error:"Пустая идея"};
+    const project=await findProjectByName(DB,args.project_name);
+    const r=await DB.prepare("INSERT INTO ideas(text,project_id) VALUES(?,?)").bind(text,project?.id||null).run();
+    return {ok:true,action:"idea_saved",id:r.meta?.last_row_id||null,text,project:project?.name||null};
+  }
+
+  if(name==="list_tasks"){
+    const status=["open","done","all"].includes(args.status)?args.status:"open";
+    let res;
+    if(status==="all") res=await DB.prepare("SELECT id,title,details,status,due_at FROM tasks ORDER BY id DESC LIMIT 30").all();
+    else res=await DB.prepare("SELECT id,title,details,status,due_at FROM tasks WHERE status=? ORDER BY id DESC LIMIT 30").bind(status).all();
+    return {ok:true,action:"tasks_listed",status,tasks:res.results||[]};
+  }
+
+  if(name==="find_client"){
+    const q=String(args.query||"").trim().slice(0,200);
+    if(!q) return {ok:false,error:"Пустой запрос"};
+    const like="%"+q+"%";
+    const res=await DB.prepare("SELECT id,name,phone,messenger,project,notes FROM clients WHERE lower(name) LIKE lower(?) OR phone LIKE ? OR lower(COALESCE(project,'')) LIKE lower(?) ORDER BY id DESC LIMIT 10").bind(like,like,like).all();
+    return {ok:true,action:"clients_found",query:q,clients:res.results||[]};
+  }
+
+  if(name==="create_client"){
+    const clientName=String(args.name||"").trim().slice(0,300);
+    if(!clientName) return {ok:false,error:"Не указано имя клиента"};
+    const r=await DB.prepare("INSERT INTO clients(name,phone,messenger,project,notes) VALUES(?,?,?,?,?)")
+      .bind(
+        clientName,
+        String(args.phone||"").trim().slice(0,100)||null,
+        String(args.messenger||"").trim().slice(0,100)||null,
+        String(args.project||"").trim().slice(0,300)||null,
+        String(args.notes||"").trim().slice(0,4000)||null
+      ).run();
+    return {ok:true,action:"client_created",id:r.meta?.last_row_id||null,name:clientName};
+  }
+
+  if(name==="create_project"){
+    const projectName=String(args.name||"").trim().slice(0,300);
+    if(!projectName) return {ok:false,error:"Не указано название проекта"};
+    try{
+      const r=await DB.prepare("INSERT INTO projects(name,notes) VALUES(?,?)")
+        .bind(projectName,String(args.notes||"").trim().slice(0,4000)||null).run();
+      return {ok:true,action:"project_created",id:r.meta?.last_row_id||null,name:projectName};
+    }catch{
+      const existing=await findProjectByName(DB,projectName);
+      return {ok:true,action:"project_exists",id:existing?.id||null,name:existing?.name||projectName};
+    }
+  }
+
+  if(name==="draft_message"){
+    const recipient=String(args.recipient_name||"").trim().slice(0,300);
+    const channel=["max","whatsapp","email","sms","other"].includes(args.channel)?args.channel:"other";
+    const text=String(args.text||"").trim().slice(0,4000);
+    if(!recipient||!text) return {ok:false,error:"Не хватает получателя или текста"};
+    const payload=JSON.stringify({channel,recipient_name:recipient,text});
+    const r=await DB.prepare("INSERT INTO actions(action_type,target,payload,status) VALUES('draft_message',?,?,'pending')")
+      .bind(recipient,payload).run();
+    return {
+      ok:true,
+      action:"draft_created",
+      id:r.meta?.last_row_id||null,
+      recipient_name:recipient,
+      channel,
+      text,
+      status:"pending",
+      note:"Черновик сохранён, но НЕ отправлен."
+    };
+  }
+
+  return {ok:false,error:"Неизвестный инструмент"};
 }
 
 async function routeApi(request, env, url){
@@ -166,7 +386,7 @@ async function routeApi(request, env, url){
       ok:schema.ok,
       app:"NEUROGRAF WORK AI",
       assistant:"Мира",
-      version:"0.7.1-voicefix",
+      version:"0.8-actions",
       database:schema.ok?"ready":"missing",
       schema:schema.schema||null,
       owner_password:Boolean(env.OWNER_PASSWORD),
@@ -252,6 +472,15 @@ async function routeApi(request, env, url){
     return j({ok:true,id:r.meta?.last_row_id||null});
   }
 
+
+  const actionMatch=url.pathname.match(/^\/api\/actions\/(\d+)$/);
+  if(actionMatch && request.method==="PATCH"){
+    const b=await bodyJson(request);
+    if(b.status!=="rejected") return j({error:"Only reject is supported in v0.8"},400);
+    await env.DB.prepare("UPDATE actions SET status='rejected' WHERE id=? AND status='pending'").bind(Number(actionMatch[1])).run();
+    return j({ok:true,status:"rejected"});
+  }
+
   if(url.pathname==="/api/chat" && request.method==="POST"){
     if(!env.OPENAI_API_KEY) return j({error:"OPENAI_API_KEY not configured"},503);
     const b=await bodyJson(request);
@@ -260,21 +489,51 @@ async function routeApi(request, env, url){
 
     await env.DB.prepare("INSERT INTO conversations(role,content) VALUES('user',?)").bind(message).run();
     const ctx=await appContext(env.DB);
+    const localTime=String(b.client_local_time||"").slice(0,160);
 
-    const r=await fetch("https://api.openai.com/v1/responses",{
-      method:"POST",
-      headers:{"Authorization":`Bearer ${env.OPENAI_API_KEY}`,"Content-Type":"application/json"},
-      body:JSON.stringify({
+    try{
+      let response=await openAI(env,{
         model:env.OPENAI_CHAT_MODEL||"gpt-5.6-luna",
         instructions:SYSTEM,
-        input:`Контекст приложения:\n${JSON.stringify(ctx)}\n\nЗапрос пользователя:\n${message}`
-      })
-    });
-    const data=await r.json().catch(()=>({}));
-    if(!r.ok) return j({error:"OpenAI error",detail:data?.error?.message||"unknown"},502);
-    const answer=extractText(data)||"Не удалось получить текст ответа.";
-    await env.DB.prepare("INSERT INTO conversations(role,content) VALUES('assistant',?)").bind(answer).run();
-    return j({answer});
+        tools:MIRA_TOOLS,
+        input:"Текущее локальное время пользователя: "+(localTime||"не передано")+
+          "\n\nКонтекст приложения:\n"+JSON.stringify(ctx)+
+          "\n\nЗапрос пользователя:\n"+message
+      });
+
+      const toolResults=[];
+      for(let round=0;round<3;round++){
+        const calls=(Array.isArray(response.output)?response.output:[]).filter(x=>x?.type==="function_call");
+        if(!calls.length) break;
+
+        const outputs=[];
+        for(const call of calls){
+          let args={};
+          try{ args=JSON.parse(call.arguments||"{}"); }catch{}
+          const result=await executeMiraTool(call.name,args,env);
+          toolResults.push({name:call.name,result});
+          outputs.push({
+            type:"function_call_output",
+            call_id:call.call_id,
+            output:JSON.stringify(result)
+          });
+        }
+
+        response=await openAI(env,{
+          model:env.OPENAI_CHAT_MODEL||"gpt-5.6-luna",
+          instructions:SYSTEM,
+          tools:MIRA_TOOLS,
+          previous_response_id:response.id,
+          input:outputs
+        });
+      }
+
+      const answer=extractText(response)||"Готово.";
+      await env.DB.prepare("INSERT INTO conversations(role,content) VALUES('assistant',?)").bind(answer).run();
+      return j({answer,refresh:toolResults.length>0,tool_results:toolResults});
+    }catch(e){
+      return j({error:"OpenAI error",detail:e?.detail||e?.message||"unknown"},502);
+    }
   }
 
   if(url.pathname==="/api/tts" && request.method==="POST"){
