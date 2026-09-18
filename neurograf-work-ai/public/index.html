@@ -100,7 +100,7 @@ button{cursor:pointer}.gold{border:0;background:linear-gradient(90deg,#b58b1c,#f
 </div>
 <script>
 const $=s=>document.querySelector(s);
-let data={tasks:[],clients:[],projects:[],ideas:[],history:[]};
+let data={tasks:[],clients:[],projects:[],ideas:[],history:[],actions:[]};
 
 async function api(path,opt={}){
   const r=await fetch(path,{credentials:"same-origin",...opt,headers:{"Content-Type":"application/json",...(opt.headers||{})}});
@@ -123,9 +123,12 @@ function render(){
   $("#projectsList").innerHTML=data.projects.map(p=>'<div class="item"><div><b>'+esc(p.name)+'</b><br><small>'+esc(p.status)+'</small></div></div>').join("")||"<small>Проектов пока нет.</small>";
   $("#ideasList").innerHTML=data.ideas.map(i=>'<div class="item"><div>'+esc(i.text)+'</div></div>').join("")||"<small>Идей пока нет.</small>";
 }
-async function load(){
+async function refreshData(){
   data=await api("/api/bootstrap");
   render();
+}
+async function load(){
+  await refreshData();
   $("#chat").innerHTML="";
   for(const h of data.history||[]) msg(h.role,h.content);
   if(!(data.history||[]).length) msg("assistant","Я Мира. Могу помочь с задачами, клиентами, проектами, текстами и идеями.");
@@ -154,8 +157,9 @@ async function ask(text,shouldSpeak=true){
   text=(text||"").trim();if(!text)return;
   msg("user",text);$("#message").value="";$("#send").disabled=true;
   try{
-    const r=await api("/api/chat",{method:"POST",body:JSON.stringify({message:text})});
+    const r=await api("/api/chat",{method:"POST",body:JSON.stringify({message:text,client_local_time:new Date().toString()})});
     msg("assistant",r.answer);
+    if(r.refresh) await refreshData();
     if(shouldSpeak) await speak(r.answer);
   }catch(e){msg("assistant","Ошибка: "+(e.body?.detail||e.body?.error||e.message));}
   finally{$("#send").disabled=false;}
