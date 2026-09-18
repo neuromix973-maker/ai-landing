@@ -101,7 +101,7 @@ const SYSTEM = `
 Если пользователь просит отправить сообщение во внешний сервис, разрешено только подготовить черновик через draft_message. Никогда не говори, что черновик отправлен.
 Отвечай обычным чистым текстом без Markdown-разметки: не используй символы >, **, __, заголовки # и тройные обратные кавычки.
 Постоянные записи из блока memory считай устойчивыми предпочтениями и правилами владельца и применяй их автоматически, когда они относятся к текущей задаче.
-Материалы из блока knowledge используй как рабочую базу знаний. Если знания противоречат свежим данным пользователя, приоритет у свежего сообщения пользователя.
+Блок knowledge содержит каталог доступных материалов. Когда нужен их текст, используй инструмент search_knowledge вместо догадок. Если знания противоречат свежим данным пользователя, приоритет у свежего сообщения пользователя.
 Если пользователь говорит «запомни», «всегда делай», «мне нравится», «я предпочитаю» или явно формулирует постоянное правило — используй инструмент save_memory.
 `;
 
@@ -204,8 +204,8 @@ async function appContext(DB){
     DB.prepare("SELECT id,text,project_id,created_at FROM ideas ORDER BY id DESC LIMIT 10").all(),
     DB.prepare("SELECT role,content,created_at FROM conversations ORDER BY id DESC LIMIT 8").all(),
     DB.prepare("SELECT id,action_type,target,payload,status,confirmed_at,created_at FROM actions WHERE status IN ('pending','approved') ORDER BY id DESC LIMIT 10").all(),
-    DB.prepare("SELECT id,category,content,importance,created_at FROM memories WHERE active=1 ORDER BY importance DESC,id DESC LIMIT 40").all(),
-    DB.prepare("SELECT id,title,content,source,created_at FROM knowledge WHERE active=1 ORDER BY id DESC LIMIT 20").all()
+    DB.prepare("SELECT id,category,substr(content,1,1200) AS content,importance,created_at FROM memories WHERE active=1 ORDER BY importance DESC,id DESC LIMIT 25").all(),
+    DB.prepare("SELECT id,title,source,created_at FROM knowledge WHERE active=1 ORDER BY id DESC LIMIT 30").all()
   ]);
   return {
     tasks:tasks.results||[],
@@ -402,7 +402,7 @@ async function executeMiraTool(name,args,env){
   const DB=env.DB;
 
   if(name==="save_memory"){
-    const content=String(args.content||"").trim().slice(0,4000);
+    const content=String(args.content||"").trim().slice(0,1500);
     if(!content) return {ok:false,error:"Пустая запись памяти"};
     const category=["preference","rule","profile","workflow","other"].includes(args.category)?args.category:"preference";
     const importance=Math.max(1,Math.min(5,Number(args.importance)||3));
@@ -708,7 +708,7 @@ async function routeApi(request, env, url){
 
   if(url.pathname==="/api/memories" && request.method==="POST"){
     const b=await bodyJson(request);
-    const content=String(b.content||"").trim().slice(0,4000);
+    const content=String(b.content||"").trim().slice(0,1500);
     if(!content) return j({error:"content required"},400);
     const category=["preference","rule","profile","workflow","other"].includes(b.category)?b.category:"preference";
     const importance=Math.max(1,Math.min(5,Number(b.importance)||3));
