@@ -78,7 +78,7 @@ public class MainActivity extends Activity {
         settings.setAllowContentAccess(true);
         settings.setCacheMode(WebSettings.LOAD_DEFAULT);
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
-        settings.setUserAgentString(settings.getUserAgentString() + " EXCAVATOR-PRO-ANDROID/15.13.6");
+        settings.setUserAgentString(settings.getUserAgentString() + " EXCAVATOR-PRO-ANDROID/15.13.8");
 
         CookieManager cookieManager = CookieManager.getInstance();
         cookieManager.setAcceptCookie(true);
