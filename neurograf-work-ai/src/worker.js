@@ -160,7 +160,7 @@ function cleanAssistantText(text){
     .replace(/^\s*[-*]\s+/gm,"• ")
     .replace(/```[a-zA-Z0-9_-]*\n?/g,"")
     .replace(/```/g,"")
-    .replace(/[([^\]]+)\]\(([^)]+)\)/g,"$1 ($2)")
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g,"$1 ($2)")
     .replace(/\n{3,}/g,"\n\n")
     .trim();
 }
