@@ -284,10 +284,31 @@ document.addEventListener("click",async e=>{
   if(b.dataset.q){$("#message").value=b.dataset.q;$("#message").focus();}
   if(b.dataset.task){await api("/api/tasks/"+b.dataset.task,{method:"PATCH",body:JSON.stringify({status:b.dataset.status})});await refreshData();}
   if(b.dataset.taskDelete){
-    const title=b.dataset.taskTitle||"эту задачу";
-    if(confirm('Удалить задачу «'+title+'»?')){
-      await api("/api/tasks/"+b.dataset.taskDelete,{method:"DELETE"});
+    const id=b.dataset.taskDelete;
+    if(b.dataset.armed!=="1"){
+      b.dataset.armed="1";
+      b.dataset.originalText=b.textContent;
+      b.textContent="Удалить?";
+      b.classList.add("danger");
+      setTimeout(()=>{
+        if(b.isConnected && b.dataset.armed==="1"){
+          b.dataset.armed="0";
+          b.textContent=b.dataset.originalText||"🗑";
+        }
+      },3500);
+      return;
+    }
+
+    b.disabled=true;
+    b.textContent="Удаляю…";
+    try{
+      await api("/api/tasks/"+id,{method:"DELETE"});
       await refreshData();
+    }catch(e){
+      b.disabled=false;
+      b.dataset.armed="0";
+      b.textContent="Ошибка";
+      setTimeout(()=>{if(b.isConnected)b.textContent="🗑";},1500);
     }
   }
   if(b.dataset.copyText!==undefined){
