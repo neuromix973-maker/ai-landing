@@ -9,6 +9,8 @@
     <application
         android:allowBackup="true"
         android:usesCleartextTraffic="false"
+        android:icon="@drawable/ic_launcher"
+        android:roundIcon="@drawable/ic_launcher"
         android:label="EXCAVATOR PRO"
         android:theme="@style/AppTheme">
 
