@@ -83,8 +83,8 @@ function j(data, status=200, extra={}) {
 async function ensureSchema(DB) {
   if (!DB) return {ok:false,error:"DB binding missing"};
   for (const sql of SCHEMA) await DB.prepare(sql).run();
-  await DB.prepare("INSERT OR REPLACE INTO app_meta (key,value,updated_at) VALUES ('schema_version','0.8',CURRENT_TIMESTAMP)").run();
-  return {ok:true,schema:"0.8"};
+  await DB.prepare("INSERT OR REPLACE INTO app_meta (key,value,updated_at) VALUES ('schema_version','0.9',CURRENT_TIMESTAMP)").run();
+  return {ok:true,schema:"0.9"};
 }
 
 function b64url(bytes) {
@@ -340,6 +340,12 @@ async function executeMiraTool(name,args,env){
     const text=String(args.text||"").trim().slice(0,6000);
     if(!text) return {ok:false,error:"Пустая идея"};
     const project=await findProjectByName(DB,args.project_name);
+    const existing=await DB.prepare(
+      "SELECT id,text FROM ideas WHERE lower(text)=lower(?) AND COALESCE(project_id,0)=COALESCE(?,0) AND created_at >= datetime('now','-10 minutes') ORDER BY id DESC LIMIT 1"
+    ).bind(text,project?.id||null).first();
+    if(existing){
+      return {ok:true,action:"idea_exists",id:existing.id,text:existing.text,note:"Такая идея уже сохранена, дубль не создан."};
+    }
     const r=await DB.prepare("INSERT INTO ideas(text,project_id) VALUES(?,?)").bind(text,project?.id||null).run();
     return {ok:true,action:"idea_saved",id:r.meta?.last_row_id||null,text,project:project?.name||null};
   }
@@ -363,10 +369,17 @@ async function executeMiraTool(name,args,env){
   if(name==="create_client"){
     const clientName=String(args.name||"").trim().slice(0,300);
     if(!clientName) return {ok:false,error:"Не указано имя клиента"};
+    const phone=String(args.phone||"").trim().slice(0,100)||null;
+    const existing=await DB.prepare(
+      "SELECT id,name,phone FROM clients WHERE lower(name)=lower(?) AND COALESCE(phone,'')=COALESCE(?,'') AND created_at >= datetime('now','-10 minutes') ORDER BY id DESC LIMIT 1"
+    ).bind(clientName,phone).first();
+    if(existing){
+      return {ok:true,action:"client_exists",id:existing.id,name:existing.name,phone:existing.phone,note:"Такой клиент уже есть, дубль не создан."};
+    }
     const r=await DB.prepare("INSERT INTO clients(name,phone,messenger,project,notes) VALUES(?,?,?,?,?)")
       .bind(
         clientName,
-        String(args.phone||"").trim().slice(0,100)||null,
+        phone,
         String(args.messenger||"").trim().slice(0,100)||null,
         String(args.project||"").trim().slice(0,300)||null,
         String(args.notes||"").trim().slice(0,4000)||null
@@ -418,7 +431,7 @@ async function routeApi(request, env, url){
       ok:schema.ok,
       app:"NEUROGRAF WORK AI",
       assistant:"Мира",
-      version:"0.8.2-dedupe",
+      version:"0.9-control",
       database:schema.ok?"ready":"missing",
       schema:schema.schema||null,
       owner_password:Boolean(env.OWNER_PASSWORD),
@@ -475,6 +488,13 @@ async function routeApi(request, env, url){
     const status=b.status==="done"?"done":"open";
     await env.DB.prepare("UPDATE tasks SET status=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(status,Number(taskMatch[1])).run();
     return j({ok:true});
+  }
+  if(taskMatch && request.method==="DELETE"){
+    const id=Number(taskMatch[1]);
+    const existing=await env.DB.prepare("SELECT id,title FROM tasks WHERE id=?").bind(id).first();
+    if(!existing) return j({error:"Задача не найдена"},404);
+    await env.DB.prepare("DELETE FROM tasks WHERE id=?").bind(id).run();
+    return j({ok:true,deleted:{id:existing.id,title:existing.title}});
   }
 
   if(url.pathname==="/api/clients" && request.method==="POST"){
