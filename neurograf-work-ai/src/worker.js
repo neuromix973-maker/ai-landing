@@ -306,10 +306,15 @@ async function openAI(env, payload){
   let {r,data}=await send(primary);
   let usedModel=primary.model;
 
-  if(r.status===429 && primary.model==="gpt-5.6-luna"){
-    const fallback={...primary,model:"gpt-5.6-terra"};
+  const fallbacks=[];
+  if(primary.model==="gpt-5.6-luna") fallbacks.push("gpt-5.6-terra","gpt-5.6-sol");
+  else if(primary.model==="gpt-5.6-terra") fallbacks.push("gpt-5.6-sol");
+
+  for(const model of fallbacks){
+    if(r.status!==429) break;
+    const fallback={...primary,model};
     ({r,data}=await send(fallback));
-    usedModel="gpt-5.6-terra";
+    usedModel=model;
   }
 
   if(!r.ok){
@@ -520,7 +525,7 @@ async function routeApi(request, env, url){
       ok:schema.ok,
       app:"NEUROGRAF WORK AI",
       assistant:"Мира",
-      version:"1.1-max-send",
+      version:"1.1.1-ai-fallback",
       database:schema.ok?"ready":"missing",
       schema:schema.schema||null,
       owner_password:Boolean(env.OWNER_PASSWORD),
