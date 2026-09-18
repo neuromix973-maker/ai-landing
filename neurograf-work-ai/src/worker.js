@@ -57,6 +57,16 @@ const SCHEMA = [
     executed_at TEXT,
     error TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`,
+  `CREATE TABLE IF NOT EXISTS max_contacts (
+    user_id TEXT PRIMARY KEY,
+    first_name TEXT,
+    last_name TEXT,
+    username TEXT,
+    chat_id TEXT,
+    client_id INTEGER,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   )`
 ];
 
@@ -84,8 +94,8 @@ function j(data, status=200, extra={}) {
 async function ensureSchema(DB) {
   if (!DB) return {ok:false,error:"DB binding missing"};
   for (const sql of SCHEMA) await DB.prepare(sql).run();
-  await DB.prepare("INSERT OR REPLACE INTO app_meta (key,value,updated_at) VALUES ('schema_version','1.0',CURRENT_TIMESTAMP)").run();
-  return {ok:true,schema:"1.0"};
+  await DB.prepare("INSERT OR REPLACE INTO app_meta (key,value,updated_at) VALUES ('schema_version','1.1',CURRENT_TIMESTAMP)").run();
+  return {ok:true,schema:"1.1"};
 }
 
 function b64url(bytes) {
@@ -168,7 +178,7 @@ function cleanAssistantText(text){
 async function appContext(DB){
   const [tasks,clients,projects,ideas,history,actions] = await Promise.all([
     DB.prepare("SELECT id,title,details,status,due_at,project_id,client_id FROM tasks ORDER BY CASE WHEN status='open' THEN 0 ELSE 1 END, id DESC LIMIT 15").all(),
-    DB.prepare("SELECT id,name,phone,messenger,project,notes FROM clients ORDER BY id DESC LIMIT 15").all(),
+    DB.prepare("SELECT c.id,c.name,c.phone,c.messenger,c.project,c.notes,m.user_id AS max_user_id,m.username AS max_username,m.chat_id AS max_chat_id FROM clients c LEFT JOIN max_contacts m ON m.client_id=c.id ORDER BY c.id DESC LIMIT 15").all(),
     DB.prepare("SELECT id,name,status,notes FROM projects ORDER BY id DESC LIMIT 15").all(),
     DB.prepare("SELECT id,text,project_id,created_at FROM ideas ORDER BY id DESC LIMIT 10").all(),
     DB.prepare("SELECT role,content,created_at FROM conversations ORDER BY id DESC LIMIT 8").all(),
@@ -438,15 +448,79 @@ async function executeMiraTool(name,args,env){
   return {ok:false,error:"Неизвестный инструмент"};
 }
 
+
+async function maxApi(env, path, options={}){
+  if(!env.MAX_BOT_TOKEN){
+    const e=new Error("MAX_BOT_TOKEN not configured");
+    e.status=503;
+    throw e;
+  }
+  const r=await fetch("https://platform-api2.max.ru"+path,{
+    ...options,
+    headers:{
+      "Authorization":env.MAX_BOT_TOKEN,
+      ...(options.body?{"Content-Type":"application/json"}:{}),
+      ...(options.headers||{})
+    }
+  });
+  const data=await r.json().catch(()=>({}));
+  if(!r.ok || data?.success===false){
+    const e=new Error(data?.message||data?.error||("MAX API HTTP "+r.status));
+    e.status=r.status;
+    e.detail=data;
+    throw e;
+  }
+  return data;
+}
+
+async function saveMaxContact(DB, update){
+  const user=update?.user || update?.message?.sender || null;
+  if(!user?.user_id) return {saved:false};
+  const chatId=update?.chat_id ?? update?.message?.recipient?.chat_id ?? null;
+  let clientId=null;
+  const payload=String(update?.payload||"");
+  const m=payload.match(/^client_(\d+)$/);
+  if(m) clientId=Number(m[1]);
+  const existing=await DB.prepare("SELECT client_id FROM max_contacts WHERE user_id=?").bind(String(user.user_id)).first();
+  if(!clientId) clientId=existing?.client_id||null;
+  const sql="INSERT INTO max_contacts(user_id,first_name,last_name,username,chat_id,client_id,created_at,updated_at) " +
+    "VALUES(?,?,?,?,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP) " +
+    "ON CONFLICT(user_id) DO UPDATE SET first_name=excluded.first_name,last_name=excluded.last_name,username=excluded.username," +
+    "chat_id=COALESCE(excluded.chat_id,max_contacts.chat_id),client_id=COALESCE(excluded.client_id,max_contacts.client_id),updated_at=CURRENT_TIMESTAMP";
+  await DB.prepare(sql).bind(
+    String(user.user_id),
+    String(user.first_name||user.name||"").slice(0,200)||null,
+    String(user.last_name||"").slice(0,200)||null,
+    String(user.username||"").slice(0,200)||null,
+    chatId!=null?String(chatId):null,
+    clientId
+  ).run();
+  return {saved:true,user_id:String(user.user_id),client_id:clientId,chat_id:chatId!=null?String(chatId):null};
+}
+
+async function maxBotInfo(env){
+  return await maxApi(env,"/me",{method:"GET"});
+}
+
 async function routeApi(request, env, url){
   const schema=await ensureSchema(env.DB);
+
+  if(url.pathname==="/api/max/webhook" && request.method==="POST"){
+    if(env.MAX_WEBHOOK_SECRET){
+      const got=request.headers.get("X-Max-Bot-Api-Secret")||"";
+      if(!(await sameSecret(got,env.MAX_WEBHOOK_SECRET))) return j({error:"Invalid MAX webhook secret"},401);
+    }
+    const update=await bodyJson(request);
+    const saved=await saveMaxContact(env.DB,update);
+    return j({ok:true,...saved});
+  }
 
   if(url.pathname==="/api/health"){
     return j({
       ok:schema.ok,
       app:"NEUROGRAF WORK AI",
       assistant:"Мира",
-      version:"1.0-safe-send",
+      version:"1.1-max-send",
       database:schema.ok?"ready":"missing",
       schema:schema.schema||null,
       owner_password:Boolean(env.OWNER_PASSWORD),
@@ -483,6 +557,70 @@ async function routeApi(request, env, url){
   const authed=await validSession(request,env);
   if(url.pathname==="/api/session") return j({authenticated:authed});
   if(!authed) return j({error:"AUTH_REQUIRED"},401);
+
+  if(url.pathname==="/api/max/status" && request.method==="GET"){
+    if(!env.MAX_BOT_TOKEN) return j({configured:false,webhook_secret:Boolean(env.MAX_WEBHOOK_SECRET)});
+    try{
+      const bot=await maxBotInfo(env);
+      return j({configured:true,webhook_secret:Boolean(env.MAX_WEBHOOK_SECRET),bot:{user_id:bot.user_id,first_name:bot.first_name||bot.name||null,username:bot.username||null}});
+    }catch(e){
+      return j({configured:true,working:false,error:e.message},502);
+    }
+  }
+
+  if(url.pathname==="/api/max/setup" && request.method==="POST"){
+    if(!env.MAX_BOT_TOKEN) return j({error:"MAX_BOT_TOKEN not configured"},503);
+    if(!env.MAX_WEBHOOK_SECRET) return j({error:"MAX_WEBHOOK_SECRET not configured"},503);
+    const webhookUrl=url.origin+"/api/max/webhook";
+    try{
+      const result=await maxApi(env,"/subscriptions",{method:"POST",body:JSON.stringify({url:webhookUrl,update_types:["bot_started","message_created"],secret:env.MAX_WEBHOOK_SECRET})});
+      return j({ok:true,webhook_url:webhookUrl,result});
+    }catch(e){
+      return j({error:"MAX setup failed",detail:e.message},502);
+    }
+  }
+
+  const maxLinkMatch=url.pathname.match(/^\/api\/clients\/(\d+)\/max-link$/);
+  if(maxLinkMatch && request.method==="GET"){
+    const clientId=Number(maxLinkMatch[1]);
+    const client=await env.DB.prepare("SELECT id,name FROM clients WHERE id=?").bind(clientId).first();
+    if(!client) return j({error:"Клиент не найден"},404);
+    if(!env.MAX_BOT_TOKEN) return j({error:"MAX_BOT_TOKEN not configured"},503);
+    try{
+      const bot=await maxBotInfo(env);
+      if(!bot.username) return j({error:"У бота MAX нет username"},409);
+      return j({ok:true,client_id:clientId,client_name:client.name,link:"https://max.ru/"+encodeURIComponent(bot.username)+"?start=client_"+clientId});
+    }catch(e){
+      return j({error:"MAX bot info failed",detail:e.message},502);
+    }
+  }
+
+  const sendActionMatch=url.pathname.match(/^\/api\/actions\/(\d+)\/send$/);
+  if(sendActionMatch && request.method==="POST"){
+    const id=Number(sendActionMatch[1]);
+    const action=await env.DB.prepare("SELECT id,action_type,target,payload,status FROM actions WHERE id=?").bind(id).first();
+    if(!action) return j({error:"Черновик не найден"},404);
+    if(action.status!=="approved") return j({error:"Сначала подтвердите черновик"},409);
+    let payload={};
+    try{payload=JSON.parse(action.payload||"{}");}catch{}
+    if(payload.channel!=="max") return j({error:"Этот черновик не предназначен для MAX"},409);
+    if(!env.MAX_BOT_TOKEN) return j({error:"MAX_BOT_TOKEN not configured"},503);
+    const recipient=String(payload.recipient_name||action.target||"").trim();
+    const client=await env.DB.prepare("SELECT id,name FROM clients WHERE lower(name)=lower(?) ORDER BY id DESC LIMIT 1").bind(recipient).first();
+    if(!client) return j({error:"Клиент не найден в базе: "+recipient},404);
+    const contact=await env.DB.prepare("SELECT user_id,username FROM max_contacts WHERE client_id=? ORDER BY updated_at DESC LIMIT 1").bind(client.id).first();
+    if(!contact?.user_id) return j({error:"Клиент ещё не привязан к MAX. Сначала отправьте ему ссылку привязки."},409);
+    const text=String(payload.text||"").trim().slice(0,4000);
+    if(!text) return j({error:"Пустой текст сообщения"},400);
+    try{
+      const sent=await maxApi(env,"/messages?user_id="+encodeURIComponent(contact.user_id),{method:"POST",body:JSON.stringify({text,notify:true})});
+      await env.DB.prepare("UPDATE actions SET status='sent',executed_at=CURRENT_TIMESTAMP,error=NULL WHERE id=?").bind(id).run();
+      return j({ok:true,sent:true,status:"sent",recipient:client.name,max_user_id:contact.user_id,message:sent.message||sent});
+    }catch(e){
+      await env.DB.prepare("UPDATE actions SET error=? WHERE id=?").bind(String(e.message||"MAX send failed").slice(0,1000),id).run();
+      return j({error:"MAX send failed",detail:e.message},502);
+    }
+  }
 
   if(url.pathname==="/api/bootstrap" && request.method==="GET"){
     return j(await appContext(env.DB));
