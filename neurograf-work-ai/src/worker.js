@@ -67,6 +67,24 @@ const SCHEMA = [
     client_id INTEGER,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`,
+  `CREATE TABLE IF NOT EXISTS memories (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    category TEXT NOT NULL DEFAULT 'preference',
+    content TEXT NOT NULL,
+    importance INTEGER NOT NULL DEFAULT 3,
+    active INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`,
+  `CREATE TABLE IF NOT EXISTS knowledge (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    content TEXT NOT NULL,
+    source TEXT,
+    active INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   )`
 ];
 
@@ -82,6 +100,9 @@ const SYSTEM = `
 Если пользователь спрашивает о задачах или просит найти клиента — используй инструмент, чтобы получить актуальные данные.
 Если пользователь просит отправить сообщение во внешний сервис, разрешено только подготовить черновик через draft_message. Никогда не говори, что черновик отправлен.
 Отвечай обычным чистым текстом без Markdown-разметки: не используй символы >, **, __, заголовки # и тройные обратные кавычки.
+Постоянные записи из блока memory считай устойчивыми предпочтениями и правилами владельца и применяй их автоматически, когда они относятся к текущей задаче.
+Материалы из блока knowledge используй как рабочую базу знаний. Если знания противоречат свежим данным пользователя, приоритет у свежего сообщения пользователя.
+Если пользователь говорит «запомни», «всегда делай», «мне нравится», «я предпочитаю» или явно формулирует постоянное правило — используй инструмент save_memory.
 `;
 
 function j(data, status=200, extra={}) {
@@ -94,8 +115,8 @@ function j(data, status=200, extra={}) {
 async function ensureSchema(DB) {
   if (!DB) return {ok:false,error:"DB binding missing"};
   for (const sql of SCHEMA) await DB.prepare(sql).run();
-  await DB.prepare("INSERT OR REPLACE INTO app_meta (key,value,updated_at) VALUES ('schema_version','1.1',CURRENT_TIMESTAMP)").run();
-  return {ok:true,schema:"1.1"};
+  await DB.prepare("INSERT OR REPLACE INTO app_meta (key,value,updated_at) VALUES ('schema_version','1.2',CURRENT_TIMESTAMP)").run();
+  return {ok:true,schema:"1.2"};
 }
 
 function b64url(bytes) {
@@ -176,13 +197,15 @@ function cleanAssistantText(text){
 }
 
 async function appContext(DB){
-  const [tasks,clients,projects,ideas,history,actions] = await Promise.all([
+  const [tasks,clients,projects,ideas,history,actions,memories,knowledge] = await Promise.all([
     DB.prepare("SELECT id,title,details,status,due_at,project_id,client_id FROM tasks ORDER BY CASE WHEN status='open' THEN 0 ELSE 1 END, id DESC LIMIT 15").all(),
     DB.prepare("SELECT c.id,c.name,c.phone,c.messenger,c.project,c.notes,m.user_id AS max_user_id,m.username AS max_username,m.chat_id AS max_chat_id FROM clients c LEFT JOIN max_contacts m ON m.client_id=c.id ORDER BY c.id DESC LIMIT 15").all(),
     DB.prepare("SELECT id,name,status,notes FROM projects ORDER BY id DESC LIMIT 15").all(),
     DB.prepare("SELECT id,text,project_id,created_at FROM ideas ORDER BY id DESC LIMIT 10").all(),
     DB.prepare("SELECT role,content,created_at FROM conversations ORDER BY id DESC LIMIT 8").all(),
-    DB.prepare("SELECT id,action_type,target,payload,status,confirmed_at,created_at FROM actions WHERE status IN ('pending','approved') ORDER BY id DESC LIMIT 10").all()
+    DB.prepare("SELECT id,action_type,target,payload,status,confirmed_at,created_at FROM actions WHERE status IN ('pending','approved') ORDER BY id DESC LIMIT 10").all(),
+    DB.prepare("SELECT id,category,content,importance,created_at FROM memories WHERE active=1 ORDER BY importance DESC,id DESC LIMIT 40").all(),
+    DB.prepare("SELECT id,title,content,source,created_at FROM knowledge WHERE active=1 ORDER BY id DESC LIMIT 20").all()
   ]);
   return {
     tasks:tasks.results||[],
@@ -190,7 +213,9 @@ async function appContext(DB){
     projects:projects.results||[],
     ideas:ideas.results||[],
     history:(history.results||[]).reverse(),
-    actions:actions.results||[]
+    actions:actions.results||[],
+    memory:memories.results||[],
+    knowledge:knowledge.results||[]
   };
 }
 
@@ -274,6 +299,36 @@ const MIRA_TOOLS = [
   },
   {
     type:"function",
+    name:"save_memory",
+    description:"Сохранить долговременное правило, предпочтение или важный факт владельца. Используй только для устойчивой информации, которая пригодится в будущих разговорах.",
+    parameters:{
+      type:"object",
+      properties:{
+        content:{type:"string",description:"Что именно нужно запомнить"},
+        category:{type:"string",enum:["preference","rule","profile","workflow","other"]},
+        importance:{type:"integer",minimum:1,maximum:5}
+      },
+      required:["content"]
+    }
+  },
+  {
+    type:"function",
+    name:"list_memories",
+    description:"Показать активные записи долговременной памяти владельца.",
+    parameters:{type:"object",properties:{}}
+  },
+  {
+    type:"function",
+    name:"search_knowledge",
+    description:"Найти информацию в рабочей базе знаний Миры.",
+    parameters:{
+      type:"object",
+      properties:{query:{type:"string"}},
+      required:["query"]
+    }
+  },
+  {
+    type:"function",
     name:"draft_message",
     description:"Создать черновик внешнего сообщения. Это НЕ отправка. Используй, если пользователь просит написать или отправить сообщение клиенту, в MAX, WhatsApp, email или другой внешний канал.",
     parameters:{
@@ -345,6 +400,30 @@ async function findProjectByName(DB,name){
 
 async function executeMiraTool(name,args,env){
   const DB=env.DB;
+
+  if(name==="save_memory"){
+    const content=String(args.content||"").trim().slice(0,4000);
+    if(!content) return {ok:false,error:"Пустая запись памяти"};
+    const category=["preference","rule","profile","workflow","other"].includes(args.category)?args.category:"preference";
+    const importance=Math.max(1,Math.min(5,Number(args.importance)||3));
+    const existing=await DB.prepare("SELECT id,content FROM memories WHERE active=1 AND lower(content)=lower(?) ORDER BY id DESC LIMIT 1").bind(content).first();
+    if(existing) return {ok:true,action:"memory_exists",id:existing.id,content:existing.content,note:"Такая запись уже есть."};
+    const r=await DB.prepare("INSERT INTO memories(category,content,importance) VALUES(?,?,?)").bind(category,content,importance).run();
+    return {ok:true,action:"memory_saved",id:r.meta?.last_row_id||null,category,importance,content};
+  }
+
+  if(name==="list_memories"){
+    const res=await DB.prepare("SELECT id,category,content,importance,created_at FROM memories WHERE active=1 ORDER BY importance DESC,id DESC LIMIT 50").all();
+    return {ok:true,action:"memories_listed",memories:res.results||[]};
+  }
+
+  if(name==="search_knowledge"){
+    const q=String(args.query||"").trim().slice(0,300);
+    if(!q) return {ok:false,error:"Пустой запрос"};
+    const like="%"+q+"%";
+    const res=await DB.prepare("SELECT id,title,content,source FROM knowledge WHERE active=1 AND (lower(title) LIKE lower(?) OR lower(content) LIKE lower(?)) ORDER BY id DESC LIMIT 10").bind(like,like).all();
+    return {ok:true,action:"knowledge_found",query:q,items:res.results||[]};
+  }
   if(name==="create_task"){
     const title=String(args.title||"").trim().slice(0,500);
     if(!title) return {ok:false,error:"Не указано название задачи"};
@@ -525,7 +604,7 @@ async function routeApi(request, env, url){
       ok:schema.ok,
       app:"NEUROGRAF WORK AI",
       assistant:"Мира",
-      version:"1.1.1-ai-fallback",
+      version:"1.2-memory",
       database:schema.ok?"ready":"missing",
       schema:schema.schema||null,
       owner_password:Boolean(env.OWNER_PASSWORD),
@@ -625,6 +704,40 @@ async function routeApi(request, env, url){
       await env.DB.prepare("UPDATE actions SET error=? WHERE id=?").bind(String(e.message||"MAX send failed").slice(0,1000),id).run();
       return j({error:"MAX send failed",detail:e.message},502);
     }
+  }
+
+  if(url.pathname==="/api/memories" && request.method==="POST"){
+    const b=await bodyJson(request);
+    const content=String(b.content||"").trim().slice(0,4000);
+    if(!content) return j({error:"content required"},400);
+    const category=["preference","rule","profile","workflow","other"].includes(b.category)?b.category:"preference";
+    const importance=Math.max(1,Math.min(5,Number(b.importance)||3));
+    const r=await env.DB.prepare("INSERT INTO memories(category,content,importance) VALUES(?,?,?)").bind(category,content,importance).run();
+    return j({ok:true,id:r.meta?.last_row_id||null});
+  }
+
+  const memoryMatch=url.pathname.match(/^\/api\/memories\/(\d+)$/);
+  if(memoryMatch && request.method==="DELETE"){
+    const id=Number(memoryMatch[1]);
+    await env.DB.prepare("UPDATE memories SET active=0,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(id).run();
+    return j({ok:true,id});
+  }
+
+  if(url.pathname==="/api/knowledge" && request.method==="POST"){
+    const b=await bodyJson(request);
+    const title=String(b.title||"").trim().slice(0,300);
+    const content=String(b.content||"").trim().slice(0,12000);
+    const source=String(b.source||"manual").trim().slice(0,300)||"manual";
+    if(!title||!content) return j({error:"title and content required"},400);
+    const r=await env.DB.prepare("INSERT INTO knowledge(title,content,source) VALUES(?,?,?)").bind(title,content,source).run();
+    return j({ok:true,id:r.meta?.last_row_id||null});
+  }
+
+  const knowledgeMatch=url.pathname.match(/^\/api\/knowledge\/(\d+)$/);
+  if(knowledgeMatch && request.method==="DELETE"){
+    const id=Number(knowledgeMatch[1]);
+    await env.DB.prepare("UPDATE knowledge SET active=0,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(id).run();
+    return j({ok:true,id});
   }
 
   if(url.pathname==="/api/bootstrap" && request.method==="GET"){
