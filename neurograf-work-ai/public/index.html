@@ -52,6 +52,8 @@ button{cursor:pointer}.gold{border:0;background:linear-gradient(90deg,#b58b1c,#f
       <button class="tile" data-view="projects"><b>🚀 Проекты</b><span id="projectCount">0 проектов</span></button>
       <button class="tile" data-view="ideas"><b>💡 Идеи</b><span id="ideaCount">0 идей</span></button>
       <button class="tile" data-view="actions"><b>📝 Черновики</b><span id="actionCount">0</span></button>
+      <button class="tile" data-view="memory"><b>🧠 Память</b><span id="memoryCount">0 записей</span></button>
+      <button class="tile" data-view="knowledge"><b>📚 Знания</b><span id="knowledgeCount">0 материалов</span></button>
     </section>
 
     <section class="card">
@@ -108,11 +110,40 @@ button{cursor:pointer}.gold{border:0;background:linear-gradient(90deg,#b58b1c,#f
       <div class="hint">Мира сохраняет здесь внешние сообщения. Они ещё не отправлены.</div>
       <div id="actionsList" class="list"></div>
     </section>
+    <section id="memory" class="card panel hidden">
+      <div class="title">Память Миры</div>
+      <div class="hint">Постоянные правила и предпочтения, которые Мира применяет в следующих разговорах.</div>
+      <form id="memoryForm" class="stack" style="margin-top:10px">
+        <textarea id="memoryText" rows="3" placeholder="Например: рекламные материалы — чёрный с золотом, без лишнего текста"></textarea>
+        <div class="row">
+          <select id="memoryCategory" style="flex:1;background:#070708;border:1px solid #303034;color:#fff;border-radius:14px;padding:12px">
+            <option value="preference">Предпочтение</option>
+            <option value="rule">Правило</option>
+            <option value="workflow">Рабочий процесс</option>
+            <option value="profile">Профиль</option>
+            <option value="other">Другое</option>
+          </select>
+          <button class="gold">Запомнить</button>
+        </div>
+      </form>
+      <div id="memoryList" class="list"></div>
+    </section>
+
+    <section id="knowledge" class="card panel hidden">
+      <div class="title">База знаний</div>
+      <div class="hint">Постоянные рабочие материалы: инструкции, прайсы, описания проектов, шаблоны.</div>
+      <form id="knowledgeForm" class="stack" style="margin-top:10px">
+        <input id="knowledgeTitle" placeholder="Название материала">
+        <textarea id="knowledgeText" rows="5" placeholder="Вставьте текст материала"></textarea>
+        <button class="gold">Добавить в знания</button>
+      </form>
+      <div id="knowledgeList" class="list"></div>
+    </section>
   </div>
 </div>
 <script>
 const $=s=>document.querySelector(s);
-let data={tasks:[],clients:[],projects:[],ideas:[],history:[],actions:[]};
+let data={tasks:[],clients:[],projects:[],ideas:[],history:[],actions:[],memory:[],knowledge:[]};
 
 async function api(path,opt={}){
   const r=await fetch(path,{credentials:"same-origin",...opt,headers:{"Content-Type":"application/json",...(opt.headers||{})}});
@@ -148,11 +179,15 @@ function render(){
   $("#projectCount").textContent=data.projects.length+" проектов";
   $("#ideaCount").textContent=data.ideas.length+" идей";
   $("#actionCount").textContent=(data.actions||[]).length+" черновиков";
+  $("#memoryCount").textContent=(data.memory||[]).length+" записей";
+  $("#knowledgeCount").textContent=(data.knowledge||[]).length+" материалов";
   $("#tasksList").innerHTML=data.tasks.map(t=>'<div class="item '+(t.status==="done"?"done":"")+'"><div><b>'+esc(t.title)+'</b><br><small>'+esc(formatDue(t.due_at))+'</small></div><div class="itemActions"><button class="mini" data-task="'+t.id+'" data-status="'+(t.status==="done"?"open":"done")+'">'+(t.status==="done"?"↩":"✓")+'</button><button class="mini danger" data-task-delete="'+t.id+'" data-task-title="'+esc(t.title)+'">🗑</button></div></div>').join("")||"<small>Задач пока нет.</small>";
   $("#clientsList").innerHTML=data.clients.map(c=>'<div class="item"><div><b>'+esc(c.name)+'</b><br><small>'+esc(c.project||"без проекта")+(c.phone?" · "+esc(c.phone):"")+(c.max_user_id?" · MAX ✓":"")+'</small></div><div class="itemActions">'+(!c.max_user_id?'<button class="mini" data-max-link="'+c.id+'">Ссылка MAX</button>':'<span class="approvedMark">MAX ✓</span>')+'</div></div>').join("")||"<small>Клиентов пока нет.</small>";
   $("#projectsList").innerHTML=data.projects.map(p=>'<div class="item"><div><b>'+esc(p.name)+'</b><br><small>'+esc(p.status)+'</small></div></div>').join("")||"<small>Проектов пока нет.</small>";
   $("#ideasList").innerHTML=data.ideas.map(i=>'<div class="item"><div>'+esc(i.text)+'</div></div>').join("")||"<small>Идей пока нет.</small>";
   $("#actionsList").innerHTML=(data.actions||[]).map(a=>{let p={};try{p=JSON.parse(a.payload||"{}")}catch{}const approved=a.status==="approved";return '<div class="item"><div style="min-width:0"><b class="'+(approved?"approvedMark":"")+'">'+(approved?"Подтверждено · не отправлено":"Не отправлено")+'</b><br><small>'+esc(p.channel||"сообщение")+' · '+esc(p.recipient_name||a.target||"—")+'</small><div style="margin-top:7px;white-space:pre-wrap">'+esc(p.text||"")+'</div></div><div class="itemActions">'+(!approved?'<button class="mini approve" data-action-approve="'+a.id+'">Подтвердить</button>':"")+(approved&&p.channel==="max"?'<button class="mini approve" data-action-send="'+a.id+'">Отправить в MAX</button>':"")+'<button class="mini" data-copy-text="'+encodeURIComponent(p.text||"")+'">Копировать</button><button class="mini danger" data-action-reject="'+a.id+'">Отклонить</button></div></div>'}).join("")||"<small>Черновиков нет.</small>";
+  $("#memoryList").innerHTML=(data.memory||[]).map(m=>'<div class="item"><div style="min-width:0"><b>'+esc(m.category||"память")+'</b><br><div style="margin-top:5px;white-space:pre-wrap">'+esc(m.content||"")+'</div><small>важность '+esc(m.importance||3)+'/5</small></div><button class="mini danger" data-memory-delete="'+m.id+'">🗑</button></div>').join("")||"<small>Память пока пуста.</small>";
+  $("#knowledgeList").innerHTML=(data.knowledge||[]).map(k=>'<div class="item"><div style="min-width:0"><b>'+esc(k.title||"Материал")+'</b><br><div style="margin-top:5px;white-space:pre-wrap">'+esc((k.content||"").slice(0,500))+(String(k.content||"").length>500?"…":"")+'</div><small>'+esc(k.source||"manual")+'</small></div><button class="mini danger" data-knowledge-delete="'+k.id+'">🗑</button></div>').join("")||"<small>База знаний пока пуста.</small>";
 }
 async function refreshData(){
   data=await api("/api/bootstrap");
@@ -260,6 +295,24 @@ $("#taskForm").onsubmit=async e=>{e.preventDefault();const title=$("#taskTitle")
 $("#clientForm").onsubmit=async e=>{e.preventDefault();const name=$("#clientName").value.trim();if(!name)return;await api("/api/clients",{method:"POST",body:JSON.stringify({name,phone:$("#clientPhone").value,project:$("#clientProject").value})});e.target.reset();await load();};
 $("#projectForm").onsubmit=async e=>{e.preventDefault();const name=$("#projectName").value.trim();if(!name)return;await api("/api/projects",{method:"POST",body:JSON.stringify({name})});$("#projectName").value="";await load();};
 $("#ideaForm").onsubmit=async e=>{e.preventDefault();const text=$("#ideaText").value.trim();if(!text)return;await api("/api/ideas",{method:"POST",body:JSON.stringify({text})});$("#ideaText").value="";await load();};
+$("#memoryForm").onsubmit=async e=>{
+  e.preventDefault();
+  const content=$("#memoryText").value.trim();
+  if(!content)return;
+  await api("/api/memories",{method:"POST",body:JSON.stringify({content,category:$("#memoryCategory").value,importance:3})});
+  $("#memoryText").value="";
+  await refreshData();
+};
+$("#knowledgeForm").onsubmit=async e=>{
+  e.preventDefault();
+  const title=$("#knowledgeTitle").value.trim();
+  const content=$("#knowledgeText").value.trim();
+  if(!title||!content)return;
+  await api("/api/knowledge",{method:"POST",body:JSON.stringify({title,content,source:"manual"})});
+  $("#knowledgeTitle").value="";
+  $("#knowledgeText").value="";
+  await refreshData();
+};
 
 async function copyText(text){
   try{
@@ -310,6 +363,24 @@ document.addEventListener("click",async e=>{
       b.textContent="Ошибка";
       setTimeout(()=>{if(b.isConnected)b.textContent="🗑";},1500);
     }
+  }
+  if(b.dataset.memoryDelete){
+    if(b.dataset.armed!=="1"){
+      b.dataset.armed="1"; b.textContent="Удалить?";
+      setTimeout(()=>{if(b.isConnected&&b.dataset.armed==="1"){b.dataset.armed="0";b.textContent="🗑";}},3500);
+      return;
+    }
+    await api("/api/memories/"+b.dataset.memoryDelete,{method:"DELETE"});
+    await refreshData();
+  }
+  if(b.dataset.knowledgeDelete){
+    if(b.dataset.armed!=="1"){
+      b.dataset.armed="1"; b.textContent="Удалить?";
+      setTimeout(()=>{if(b.isConnected&&b.dataset.armed==="1"){b.dataset.armed="0";b.textContent="🗑";}},3500);
+      return;
+    }
+    await api("/api/knowledge/"+b.dataset.knowledgeDelete,{method:"DELETE"});
+    await refreshData();
   }
   if(b.dataset.copyText!==undefined){
     const text=decodeURIComponent(b.dataset.copyText||"");
