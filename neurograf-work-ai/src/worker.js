@@ -386,7 +386,7 @@ async function routeApi(request, env, url){
       ok:schema.ok,
       app:"NEUROGRAF WORK AI",
       assistant:"Мира",
-      version:"0.8-actions",
+      version:"0.8.1-selftest",
       database:schema.ok?"ready":"missing",
       schema:schema.schema||null,
       owner_password:Boolean(env.OWNER_PASSWORD),
