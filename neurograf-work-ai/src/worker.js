@@ -71,6 +71,7 @@ const SYSTEM = `
 Если пользователь просит создать задачу, сохранить идею, добавить клиента или проект — обязательно используй соответствующий инструмент, а не только отвечай текстом.
 Если пользователь спрашивает о задачах или просит найти клиента — используй инструмент, чтобы получить актуальные данные.
 Если пользователь просит отправить сообщение во внешний сервис, разрешено только подготовить черновик через draft_message. Никогда не говори, что черновик отправлен.
+Отвечай обычным чистым текстом без Markdown-разметки: не используй символы >, **, __, заголовки # и тройные обратные кавычки.
 `;
 
 function j(data, status=200, extra={}) {
@@ -83,8 +84,8 @@ function j(data, status=200, extra={}) {
 async function ensureSchema(DB) {
   if (!DB) return {ok:false,error:"DB binding missing"};
   for (const sql of SCHEMA) await DB.prepare(sql).run();
-  await DB.prepare("INSERT OR REPLACE INTO app_meta (key,value,updated_at) VALUES ('schema_version','0.9',CURRENT_TIMESTAMP)").run();
-  return {ok:true,schema:"0.9"};
+  await DB.prepare("INSERT OR REPLACE INTO app_meta (key,value,updated_at) VALUES ('schema_version','1.0',CURRENT_TIMESTAMP)").run();
+  return {ok:true,schema:"1.0"};
 }
 
 function b64url(bytes) {
@@ -150,6 +151,20 @@ function extractText(data){
   return "";
 }
 
+function cleanAssistantText(text){
+  return String(text||"")
+    .replace(/^\s*>\s?/gm,"")
+    .replace(/\*\*(.*?)\*\*/g,"$1")
+    .replace(/__(.*?)__/g,"$1")
+    .replace(/^\s*#{1,6}\s+/gm,"")
+    .replace(/^\s*[-*]\s+/gm,"• ")
+    .replace(/```[a-zA-Z0-9_-]*\n?/g,"")
+    .replace(/```/g,"")
+    .replace(/[([^\]]+)\]\(([^)]+)\)/g,"$1 ($2)")
+    .replace(/\n{3,}/g,"\n\n")
+    .trim();
+}
+
 async function appContext(DB){
   const [tasks,clients,projects,ideas,history,actions] = await Promise.all([
     DB.prepare("SELECT id,title,details,status,due_at,project_id,client_id FROM tasks ORDER BY CASE WHEN status='open' THEN 0 ELSE 1 END, id DESC LIMIT 15").all(),
@@ -157,7 +172,7 @@ async function appContext(DB){
     DB.prepare("SELECT id,name,status,notes FROM projects ORDER BY id DESC LIMIT 15").all(),
     DB.prepare("SELECT id,text,project_id,created_at FROM ideas ORDER BY id DESC LIMIT 10").all(),
     DB.prepare("SELECT role,content,created_at FROM conversations ORDER BY id DESC LIMIT 8").all(),
-    DB.prepare("SELECT id,action_type,target,payload,status,created_at FROM actions WHERE status='pending' ORDER BY id DESC LIMIT 10").all()
+    DB.prepare("SELECT id,action_type,target,payload,status,confirmed_at,created_at FROM actions WHERE status IN ('pending','approved') ORDER BY id DESC LIMIT 10").all()
   ]);
   return {
     tasks:tasks.results||[],
@@ -431,7 +446,7 @@ async function routeApi(request, env, url){
       ok:schema.ok,
       app:"NEUROGRAF WORK AI",
       assistant:"Мира",
-      version:"0.9-control",
+      version:"1.0-safe-send",
       database:schema.ok?"ready":"missing",
       schema:schema.schema||null,
       owner_password:Boolean(env.OWNER_PASSWORD),
@@ -528,9 +543,27 @@ async function routeApi(request, env, url){
   const actionMatch=url.pathname.match(/^\/api\/actions\/(\d+)$/);
   if(actionMatch && request.method==="PATCH"){
     const b=await bodyJson(request);
-    if(b.status!=="rejected") return j({error:"Only reject is supported in v0.8"},400);
-    await env.DB.prepare("UPDATE actions SET status='rejected' WHERE id=? AND status='pending'").bind(Number(actionMatch[1])).run();
-    return j({ok:true,status:"rejected"});
+    const id=Number(actionMatch[1]);
+    const existing=await env.DB.prepare("SELECT id,status,action_type,target,payload FROM actions WHERE id=?").bind(id).first();
+    if(!existing) return j({error:"Черновик не найден"},404);
+
+    if(b.status==="approved"){
+      if(existing.status==="rejected") return j({error:"Отклонённый черновик нельзя подтвердить"},409);
+      await env.DB.prepare("UPDATE actions SET status='approved',confirmed_at=CURRENT_TIMESTAMP WHERE id=?").bind(id).run();
+      return j({
+        ok:true,
+        status:"approved",
+        sent:false,
+        message:"Черновик подтверждён к отправке, но реальный канал отправки ещё не подключён."
+      });
+    }
+
+    if(b.status==="rejected"){
+      await env.DB.prepare("UPDATE actions SET status='rejected' WHERE id=?").bind(id).run();
+      return j({ok:true,status:"rejected",sent:false});
+    }
+
+    return j({error:"Допустимые статусы: approved или rejected"},400);
   }
 
   if(url.pathname==="/api/chat" && request.method==="POST"){
@@ -591,7 +624,7 @@ async function routeApi(request, env, url){
         activeModel=response._mira_model||response.model||activeModel;
       }
 
-      const answer=extractText(response)||"Готово.";
+      const answer=cleanAssistantText(extractText(response)||"Готово.");
       await env.DB.prepare("INSERT INTO conversations(role,content) VALUES('assistant',?)").bind(answer).run();
       return j({answer,refresh:toolResults.length>0,tool_results:toolResults});
     }catch(e){
