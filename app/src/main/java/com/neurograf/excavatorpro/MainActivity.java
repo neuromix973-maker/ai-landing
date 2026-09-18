@@ -13,6 +13,7 @@ import android.webkit.CookieManager;
 import android.webkit.GeolocationPermissions;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
+import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
@@ -22,7 +23,7 @@ import android.widget.ProgressBar;
 import android.widget.Toast;
 
 public class MainActivity extends Activity {
-    private static final String HOME_URL = "https://excavator-pro.pages.dev/";
+    private static final String HOME_URL = "https://excavatorpro.ru/";
     private static final int FILE_CHOOSER_REQUEST = 5001;
     private static final int LOCATION_REQUEST = 5002;
 
@@ -63,6 +64,8 @@ public class MainActivity extends Activity {
     private void configureWebView() {
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
+        settings.setJavaScriptCanOpenWindowsAutomatically(true);
+        settings.setSupportMultipleWindows(false);
         settings.setDomStorageEnabled(true);
         settings.setDatabaseEnabled(true);
         settings.setGeolocationEnabled(true);
@@ -74,7 +77,8 @@ public class MainActivity extends Activity {
         settings.setAllowFileAccess(true);
         settings.setAllowContentAccess(true);
         settings.setCacheMode(WebSettings.LOAD_DEFAULT);
-        settings.setUserAgentString(settings.getUserAgentString() + " EXCAVATOR-PRO-ANDROID/15.12.0");
+        settings.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
+        settings.setUserAgentString(settings.getUserAgentString() + " EXCAVATOR-PRO-ANDROID/15.12.1");
 
         CookieManager cookieManager = CookieManager.getInstance();
         cookieManager.setAcceptCookie(true);
@@ -101,6 +105,22 @@ public class MainActivity extends Activity {
             public void onPageFinished(WebView view, String url) {
                 super.onPageFinished(view, url);
                 CookieManager.getInstance().flush();
+                // Browser-safe MAX bridge: preserves normal buttons outside MAX.
+                view.evaluateJavascript(
+                    "(function(){"+
+                    "if(!window.WebApp){window.WebApp={};}"+
+                    "if(!window.WebApp.ready)window.WebApp.ready=function(){};"+
+                    "if(!window.WebApp.expand)window.WebApp.expand=function(){};"+
+                    "if(!window.WebApp.openLink)window.WebApp.openLink=function(u){window.location.href=u;};"+
+                    "})();", null);
+            }
+
+            @Override
+            public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
+                super.onReceivedError(view, request, error);
+                if (request.isForMainFrame()) {
+                    Toast.makeText(MainActivity.this, "Не удалось открыть EXCAVATOR PRO. Проверьте интернет.", Toast.LENGTH_LONG).show();
+                }
             }
         });
 
@@ -150,7 +170,10 @@ public class MainActivity extends Activity {
 
         if ("http".equals(scheme) || "https".equals(scheme)) {
             String host = uri.getHost() == null ? "" : uri.getHost().toLowerCase();
-            if (host.endsWith("excavator-pro.pages.dev") || host.endsWith("neuromix973.workers.dev")) {
+            if (host.equals("excavatorpro.ru") ||
+                host.endsWith(".excavatorpro.ru") ||
+                host.endsWith("excavator-pro.pages.dev") ||
+                host.endsWith("neuromix973.workers.dev")) {
                 return false;
             }
             return openExternal(uri);
