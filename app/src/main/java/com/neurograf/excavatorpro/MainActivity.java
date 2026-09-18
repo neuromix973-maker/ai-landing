@@ -78,7 +78,7 @@ public class MainActivity extends Activity {
         settings.setAllowContentAccess(true);
         settings.setCacheMode(WebSettings.LOAD_DEFAULT);
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
-        settings.setUserAgentString(settings.getUserAgentString() + " EXCAVATOR-PRO-ANDROID/15.12.1");
+        settings.setUserAgentString(settings.getUserAgentString() + " EXCAVATOR-PRO-ANDROID/15.13.6");
 
         CookieManager cookieManager = CookieManager.getInstance();
         cookieManager.setAcceptCookie(true);
@@ -105,7 +105,6 @@ public class MainActivity extends Activity {
             public void onPageFinished(WebView view, String url) {
                 super.onPageFinished(view, url);
                 CookieManager.getInstance().flush();
-                // Browser-safe MAX bridge: preserves normal buttons outside MAX.
                 view.evaluateJavascript(
                     "(function(){"+
                     "if(!window.WebApp){window.WebApp={};}"+
