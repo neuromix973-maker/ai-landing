@@ -322,6 +322,15 @@ async function executeMiraTool(name,args,env){
     const project=await findProjectByName(DB,args.project_name);
     const due=String(args.due_at||"").trim().slice(0,100)||null;
     const details=String(args.details||"").trim().slice(0,4000)||null;
+
+    const existing=await DB.prepare(
+      "SELECT id,title,due_at FROM tasks WHERE status='open' AND lower(title)=lower(?) AND COALESCE(due_at,'')=COALESCE(?,'') AND created_at >= datetime('now','-10 minutes') ORDER BY id DESC LIMIT 1"
+    ).bind(title,due).first();
+
+    if(existing){
+      return {ok:true,action:"task_exists",id:existing.id,title:existing.title,due_at:existing.due_at,note:"Такая задача уже существует, дубль не создан."};
+    }
+
     const r=await DB.prepare("INSERT INTO tasks(title,details,due_at,project_id,client_id) VALUES(?,?,?,?,?)")
       .bind(title,details,due,project?.id||null,client?.id||null).run();
     return {ok:true,action:"task_created",id:r.meta?.last_row_id||null,title,due_at:due,client:client?.name||null,project:project?.name||null};
@@ -409,7 +418,7 @@ async function routeApi(request, env, url){
       ok:schema.ok,
       app:"NEUROGRAF WORK AI",
       assistant:"Мира",
-      version:"0.8.1-fallback",
+      version:"0.8.2-dedupe",
       database:schema.ok?"ready":"missing",
       schema:schema.schema||null,
       owner_password:Boolean(env.OWNER_PASSWORD),
@@ -527,6 +536,7 @@ async function routeApi(request, env, url){
 
       activeModel=response._mira_model||response.model||activeModel;
       const toolResults=[];
+      const executedCalls=new Map();
       for(let round=0;round<3;round++){
         const calls=(Array.isArray(response.output)?response.output:[]).filter(x=>x?.type==="function_call");
         if(!calls.length) break;
@@ -535,7 +545,14 @@ async function routeApi(request, env, url){
         for(const call of calls){
           let args={};
           try{ args=JSON.parse(call.arguments||"{}"); }catch{}
-          const result=await executeMiraTool(call.name,args,env);
+          const dedupeKey=call.name+"|"+JSON.stringify(args);
+          let result;
+          if(executedCalls.has(dedupeKey)){
+            result=executedCalls.get(dedupeKey);
+          }else{
+            result=await executeMiraTool(call.name,args,env);
+            executedCalls.set(dedupeKey,result);
+          }
           toolResults.push({name:call.name,result});
           outputs.push({
             type:"function_call_output",
