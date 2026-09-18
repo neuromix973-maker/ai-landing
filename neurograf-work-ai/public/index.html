@@ -124,10 +124,12 @@ function render(){
   $("#clientCount").textContent=data.clients.length+" клиентов";
   $("#projectCount").textContent=data.projects.length+" проектов";
   $("#ideaCount").textContent=data.ideas.length+" идей";
+  $("#actionCount").textContent=(data.actions||[]).length+" черновиков";
   $("#tasksList").innerHTML=data.tasks.map(t=>'<div class="item '+(t.status==="done"?"done":"")+'"><div><b>'+esc(t.title)+'</b><br><small>'+esc(t.due_at||"без срока")+'</small></div><button class="mini" data-task="'+t.id+'" data-status="'+(t.status==="done"?"open":"done")+'">'+(t.status==="done"?"↩":"✓")+'</button></div>').join("")||"<small>Задач пока нет.</small>";
   $("#clientsList").innerHTML=data.clients.map(c=>'<div class="item"><div><b>'+esc(c.name)+'</b><br><small>'+esc(c.project||"без проекта")+(c.phone?" · "+esc(c.phone):"")+'</small></div></div>').join("")||"<small>Клиентов пока нет.</small>";
   $("#projectsList").innerHTML=data.projects.map(p=>'<div class="item"><div><b>'+esc(p.name)+'</b><br><small>'+esc(p.status)+'</small></div></div>').join("")||"<small>Проектов пока нет.</small>";
   $("#ideasList").innerHTML=data.ideas.map(i=>'<div class="item"><div>'+esc(i.text)+'</div></div>').join("")||"<small>Идей пока нет.</small>";
+  $("#actionsList").innerHTML=(data.actions||[]).map(a=>{let p={};try{p=JSON.parse(a.payload||"{}")}catch{}return '<div class="item"><div><b>Не отправлено</b><br><small>'+esc(p.channel||"сообщение")+' · '+esc(p.recipient_name||a.target||"—")+'</small><div style="margin-top:7px;white-space:pre-wrap">'+esc(p.text||"")+'</div></div></div>'}).join("")||"<small>Черновиков нет.</small>";
 }
 async function refreshData(){
   data=await api("/api/bootstrap");
