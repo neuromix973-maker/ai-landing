@@ -60,7 +60,7 @@ public class MainActivity extends Activity {
         s.setAllowFileAccess(false);
         s.setAllowContentAccess(false);
         s.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
-        s.setUserAgentString(s.getUserAgentString() + " NEUROGRAF-WORK-AI-ANDROID/0.5.0");
+        s.setUserAgentString(s.getUserAgentString() + " NEUROGRAF-WORK-AI-ANDROID/0.8.0");
 
         CookieManager cm = CookieManager.getInstance();
         cm.setAcceptCookie(true);
