@@ -27,11 +27,11 @@ jobs:
         run: gradle :app:assembleDebug --no-daemon
 
       - name: Rename APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk EXCAVATOR_PRO_v15_12.apk
+        run: cp app/build/outputs/apk/debug/app-debug.apk EXCAVATOR_PRO_v15_12_1.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: EXCAVATOR_PRO_v15_12_APK
-          path: EXCAVATOR_PRO_v15_12.apk
+          name: EXCAVATOR_PRO_v15_12_1_APK
+          path: EXCAVATOR_PRO_v15_12_1.apk
           retention-days: 90
