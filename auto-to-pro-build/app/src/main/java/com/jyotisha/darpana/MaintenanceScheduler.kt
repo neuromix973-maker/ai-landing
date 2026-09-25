@@ -5,7 +5,7 @@ import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
-import androidx.work.WorkManager
+import androidx.work.WorkManager\nimport androidx.work.workDataOf
 import java.util.Calendar
 import java.util.concurrent.TimeUnit
 
@@ -68,7 +68,9 @@ object MaintenanceScheduler {
     @JvmStatic
     fun runNow(context: Context) {
         if (!isEnabled(context)) return
-        val request = OneTimeWorkRequestBuilder<MaintenanceWorker>().build()
+        val request = OneTimeWorkRequestBuilder<MaintenanceWorker>()
+            .setInputData(workDataOf("force_notify" to true))
+            .build()
         WorkManager.getInstance(context.applicationContext).enqueueUniqueWork(
             UNIQUE_NOW,
             ExistingWorkPolicy.REPLACE,
