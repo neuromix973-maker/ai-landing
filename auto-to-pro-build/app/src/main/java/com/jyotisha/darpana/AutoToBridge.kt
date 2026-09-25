@@ -48,6 +48,29 @@ class AutoToBridge(private val activity: Activity) {
     }
 
     @JavascriptInterface
+    fun setCrashReportsEnabled(enabled: Boolean) {
+        CrashReporter.setCollectionEnabled(activity.applicationContext, enabled)
+    }
+
+    @JavascriptInterface
+    fun getCrashReporterStatus(): String {
+        return JSONObject()
+            .put("available", CrashReporter.isAvailable())
+            .put("enabled", CrashReporter.isEnabled(activity.applicationContext))
+            .put("privacy", "technical_only")
+            .toString()
+    }
+
+    @JavascriptInterface
+    fun sendCrashlyticsTestNonFatal(): Boolean {
+        if (!CrashReporter.isEnabled(activity.applicationContext)) return false
+        return CrashReporter.recordNonFatal(
+            "manual_test",
+            "AUTO TO PRO Crashlytics test non-fatal"
+        )
+    }
+
+    @JavascriptInterface
     fun getReminderModuleStatus(): String {
         val nm = activity.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         val permission = when {
