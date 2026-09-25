@@ -28,7 +28,6 @@ class AutoToBridge(
         MaintenanceScheduler.ensureScheduled(activity.applicationContext)
     }
 
-    // Maintenance reminders
     @JavascriptInterface
     fun scheduleMaintenanceReminders(planJson: String) {
         MaintenanceScheduler.updatePlan(activity.applicationContext, planJson)
@@ -85,7 +84,6 @@ class AutoToBridge(
             .toString()
     }
 
-    // OBD-II / Bluetooth Classic
     @JavascriptInterface
     fun requestBluetoothPermission() {
         if (Build.VERSION.SDK_INT < 31 || hasBluetoothPermission()) {
@@ -99,7 +97,7 @@ class AutoToBridge(
                     arrayOf(Manifest.permission.BLUETOOTH_CONNECT),
                     BLUETOOTH_PERMISSION_REQUEST
                 )
-            } catch (t: Throwable) {
+            } catch (_: Throwable) {
                 emitObdEvent(
                     "error",
                     JSONObject()
@@ -169,6 +167,11 @@ class AutoToBridge(
 
     @JavascriptInterface
     fun getObdStatus(): String = obdManager.statusJson().toString()
+
+    @JavascriptInterface
+    fun exportHistoryPdf(payloadJson: String): Boolean {
+        return PdfExportManager(activity).exportAndShare(payloadJson)
+    }
 
     fun onPermissionResult(requestCode: Int, granted: Boolean) {
         if (requestCode == BLUETOOTH_PERMISSION_REQUEST) {
