@@ -47,12 +47,23 @@ class MaintenanceWorker(
             return Result.success()
         }
 
-        ensureChannel()
+        ensureChannels()
 
         for (i in 0 until plan.length()) {
             val item = plan.optJSONObject(i) ?: continue
             processItem(item, prefs)
         }
+
+        val documentRaw = prefs.getString(
+            MaintenanceScheduler.KEY_DOCUMENT_PLAN,
+            "[]"
+        ) ?: "[]"
+        val documentPlan = try {
+            JSONArray(documentRaw)
+        } catch (_: Throwable) {
+            JSONArray()
+        }
+        processDocuments(documentPlan, prefs)
 
         return Result.success()
     }
@@ -106,6 +117,60 @@ class MaintenanceWorker(
         prefs.edit().putString(key, fingerprint).apply()
     }
 
+    private fun processDocuments(
+        plan: JSONArray,
+        prefs: android.content.SharedPreferences
+    ) {
+        val activeTypes = linkedSetOf<String>()
+
+        for (i in 0 until plan.length()) {
+            val item = plan.optJSONObject(i) ?: continue
+            val type = item.optString("type").trim().lowercase(Locale.ROOT)
+            val expiresDate = item.optString("expiresDate").trim()
+            if (type !in setOf("osago", "to") || expiresDate.isBlank()) continue
+
+            activeTypes.add(type)
+            val daysLeft = daysUntil(expiresDate, Int.MAX_VALUE)
+            if (daysLeft == Int.MAX_VALUE || daysLeft > 30) {
+                prefs.edit().remove(lastDocumentKey(type)).apply()
+                continue
+            }
+
+            val category = when {
+                daysLeft < 0 -> "expired"
+                daysLeft == 0 -> "today"
+                daysLeft <= 1 -> "d1"
+                daysLeft <= 7 -> "d7"
+                daysLeft <= 14 -> "d14"
+                else -> "d30"
+            }
+            val fingerprint = listOf(type, category, expiresDate).joinToString("|")
+            val key = lastDocumentKey(type)
+            if (prefs.getString(key, "") == fingerprint) continue
+
+            val title = if (type == "osago") "ОСАГО" else "Техосмотр"
+            val message = when {
+                daysLeft < 0 ->
+                    "Срок документа «" + title + "» истёк " + abs(daysLeft) + " дн. назад."
+                daysLeft == 0 ->
+                    "Срок документа «" + title + "» истекает сегодня."
+                daysLeft == 1 ->
+                    "Срок документа «" + title + "» истекает завтра."
+                else ->
+                    "До окончания «" + title + "» осталось " + daysLeft + " дн."
+            }
+
+            showDocumentNotification(title, message, daysLeft <= 7)
+            prefs.edit().putString(key, fingerprint).apply()
+        }
+
+        for (type in listOf("osago", "to")) {
+            if (type !in activeTypes) {
+                prefs.edit().remove(lastDocumentKey(type)).apply()
+            }
+        }
+    }
+
     private fun daysUntil(iso: String, fallback: Int): Int {
         if (iso.isBlank()) return fallback
         return try {
@@ -126,18 +191,30 @@ class MaintenanceWorker(
         }
     }
 
-    private fun ensureChannel() {
+    private fun ensureChannels() {
         if (Build.VERSION.SDK_INT < 26) return
         val manager = applicationContext.getSystemService(Context.NOTIFICATION_SERVICE)
                 as NotificationManager
-        val channel = NotificationChannel(
-            CHANNEL_ID,
-            "Техническое обслуживание",
-            NotificationManager.IMPORTANCE_DEFAULT
-        ).apply {
-            description = "Напоминания AUTO ТО PRO о сроках обслуживания автомобиля"
-        }
-        manager.createNotificationChannel(channel)
+
+        manager.createNotificationChannel(
+            NotificationChannel(
+                MAINTENANCE_CHANNEL_ID,
+                "Техническое обслуживание",
+                NotificationManager.IMPORTANCE_DEFAULT
+            ).apply {
+                description = "Напоминания AUTO ТО PRO о сроках обслуживания автомобиля"
+            }
+        )
+
+        manager.createNotificationChannel(
+            NotificationChannel(
+                DOCUMENT_CHANNEL_ID,
+                "Документы автомобиля",
+                NotificationManager.IMPORTANCE_DEFAULT
+            ).apply {
+                description = "Напоминания AUTO ТО PRO об ОСАГО и техосмотре"
+            }
+        )
     }
 
     private fun showNotification(type: String, message: String, critical: Boolean) {
@@ -152,7 +229,7 @@ class MaintenanceWorker(
         )
 
         val builder = if (Build.VERSION.SDK_INT >= 26) {
-            Notification.Builder(applicationContext, CHANNEL_ID)
+            Notification.Builder(applicationContext, MAINTENANCE_CHANNEL_ID)
         } else {
             Notification.Builder(applicationContext)
         }
@@ -173,9 +250,45 @@ class MaintenanceWorker(
         manager.notify(1000 + abs(type.hashCode() % 100000), notification)
     }
 
+    private fun showDocumentNotification(title: String, message: String, critical: Boolean) {
+        val intent = Intent(applicationContext, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+        }
+        val pending = PendingIntent.getActivity(
+            applicationContext,
+            0,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val builder = if (Build.VERSION.SDK_INT >= 26) {
+            Notification.Builder(applicationContext, DOCUMENT_CHANNEL_ID)
+        } else {
+            Notification.Builder(applicationContext)
+        }
+
+        val notification = builder
+            .setSmallIcon(android.R.drawable.stat_notify_error)
+            .setContentTitle("AUTO ТО PRO • " + title)
+            .setContentText(message)
+            .setStyle(Notification.BigTextStyle().bigText(message))
+            .setContentIntent(pending)
+            .setAutoCancel(true)
+            .setCategory(Notification.CATEGORY_REMINDER)
+            .setPriority(if (critical) Notification.PRIORITY_HIGH else Notification.PRIORITY_DEFAULT)
+            .build()
+
+        val manager = applicationContext.getSystemService(Context.NOTIFICATION_SERVICE)
+                as NotificationManager
+        manager.notify(200000 + abs(title.hashCode() % 100000), notification)
+    }
+
+    private fun lastDocumentKey(type: String) = "last_doc_notice_" + type
+
     private fun lastKey(type: String) = "last_notice_" + type.hashCode()
 
     companion object {
-        private const val CHANNEL_ID = "maintenance"
+        private const val MAINTENANCE_CHANNEL_ID = "maintenance"
+        private const val DOCUMENT_CHANNEL_ID = "documents"
     }
 }
