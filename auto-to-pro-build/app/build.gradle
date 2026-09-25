@@ -1,5 +1,6 @@
 plugins {
     id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
 }
 
 android {
@@ -10,8 +11,17 @@ android {
         applicationId 'com.jyotisha.darpana'
         minSdk 24
         targetSdk 35
-        versionCode 44
-        versionName '3.4.4'
+        versionCode 45
+        versionName '3.4.5'
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = '17'
     }
 
     buildTypes {
@@ -20,4 +30,8 @@ android {
             shrinkResources false
         }
     }
+}
+
+dependencies {
+    implementation 'androidx.work:work-runtime-ktx:2.9.1'
 }
