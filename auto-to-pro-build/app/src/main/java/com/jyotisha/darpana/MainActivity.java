@@ -3,6 +3,7 @@ package com.jyotisha.darpana;
 import android.app.Activity;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -19,6 +20,7 @@ public class MainActivity extends Activity {
     private static final int PHOTO_REQUEST = 7124;
     private WebView webView;
     private ValueCallback<Uri[]> fileCallback;
+    private AutoToBridge autoToBridge;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -47,9 +49,8 @@ public class MainActivity extends Activity {
             }
         });
 
-        // Minimal native bridge: maintenance reminders only.
-        // Existing JS data model remains in localStorage.
-        webView.addJavascriptInterface(new AutoToBridge(this), "AutoTOAndroid");
+        autoToBridge = new AutoToBridge(this, webView);
+        webView.addJavascriptInterface(autoToBridge, "AutoTOAndroid");
 
         setContentView(webView);
         webView.loadUrl("file:///android_asset/index.html");
@@ -108,7 +109,6 @@ public class MainActivity extends Activity {
                                 uri, flags & Intent.FLAG_GRANT_READ_URI_PERMISSION);
                     }
                 } catch (Exception ignored) {
-                    // Temporary access is enough for the current WebView file selection.
                 }
             }
             ValueCallback<Uri[]> callback = fileCallback;
@@ -117,6 +117,25 @@ public class MainActivity extends Activity {
             return;
         }
         super.onActivityResult(requestCode, resultCode, data);
+    }
+
+    @Override
+    public void onRequestPermissionsResult(
+            int requestCode,
+            String[] permissions,
+            int[] grantResults
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (autoToBridge != null) {
+            boolean granted = true;
+            for (int result : grantResults) {
+                if (result != PackageManager.PERMISSION_GRANTED) {
+                    granted = false;
+                    break;
+                }
+            }
+            autoToBridge.onPermissionResult(requestCode, granted);
+        }
     }
 
     private void cancelPendingChooser() {
@@ -129,6 +148,9 @@ public class MainActivity extends Activity {
     @Override
     protected void onDestroy() {
         cancelPendingChooser();
+        if (autoToBridge != null) {
+            autoToBridge.destroy();
+        }
         if (webView != null) {
             webView.stopLoading();
             webView.destroy();
