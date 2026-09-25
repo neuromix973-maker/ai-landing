@@ -35,6 +35,11 @@ class AutoToBridge(
     }
 
     @JavascriptInterface
+    fun scheduleDocumentReminders(planJson: String) {
+        MaintenanceScheduler.updateDocumentPlan(activity.applicationContext, planJson)
+    }
+
+    @JavascriptInterface
     fun setMaintenanceRemindersEnabled(enabled: Boolean) {
         MaintenanceScheduler.setEnabled(activity.applicationContext, enabled)
         if (enabled) requestNotificationPermission()
