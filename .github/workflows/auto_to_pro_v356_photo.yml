@@ -1,0 +1,36 @@
+name: AUTO TO PRO v3.5.6 Photo Storage Build
+on:
+  push:
+    branches: [ auto-to-pro-v356-photo-storage ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+
+      - name: Prepare compiled launcher resource placeholder
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import base64
+          p=Path('auto-to-pro-build/app/src/main/res/drawable/ic_launcher_foreground.png')
+          p.parent.mkdir(parents=True, exist_ok=True)
+          p.write_bytes(base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='))
+          PY
+
+      - name: Build release APK
+        working-directory: auto-to-pro-build
+        run: gradle :app:assembleRelease --stacktrace
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: auto-to-pro-v356-photo-apk
+          path: auto-to-pro-build/app/build/outputs/apk/release/app-release-unsigned.apk
