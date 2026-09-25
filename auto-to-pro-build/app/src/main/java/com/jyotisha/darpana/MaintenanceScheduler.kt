@@ -94,7 +94,7 @@ object MaintenanceScheduler {
         val p = prefs(context)
         val editor = p.edit()
         for (key in p.all.keys) {
-            if (key.startsWith("last_notice_")) editor.remove(key)
+            if (key.startsWith("last_notice_") || key.startsWith("last_doc_notice_")) editor.remove(key)
         }
         editor.apply()
     }
