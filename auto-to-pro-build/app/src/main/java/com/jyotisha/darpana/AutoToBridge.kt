@@ -24,6 +24,10 @@ class AutoToBridge(
         emitObdEvent(event, payload)
     }
 
+    private val vinDecoder = VinDecoder(activity.applicationContext) { target, payload ->
+        emitVinEvent(target, payload)
+    }
+
     init {
         MaintenanceScheduler.ensureScheduled(activity.applicationContext)
     }
@@ -173,6 +177,11 @@ class AutoToBridge(
         return PdfExportManager(activity).exportAndShare(payloadJson)
     }
 
+    @JavascriptInterface
+    fun decodeVin(vin: String, modelYear: String, target: String) {
+        vinDecoder.decode(vin, modelYear, target)
+    }
+
     fun onPermissionResult(requestCode: Int, granted: Boolean) {
         if (requestCode == BLUETOOTH_PERMISSION_REQUEST) {
             emitObdEvent("permission", JSONObject().put("granted", granted))
@@ -181,6 +190,7 @@ class AutoToBridge(
 
     fun destroy() {
         obdManager.close()
+        vinDecoder.close()
     }
 
     private fun hasBluetoothPermission(): Boolean {
@@ -192,6 +202,17 @@ class AutoToBridge(
     private fun emitObdEvent(event: String, payload: JSONObject) {
         val js = "window.onNativeObdEvent && window.onNativeObdEvent(" +
                 JSONObject.quote(event) + "," + payload.toString() + ");"
+        webView.post {
+            try {
+                webView.evaluateJavascript(js, null)
+            } catch (_: Throwable) {
+            }
+        }
+    }
+
+    private fun emitVinEvent(target: String, payload: JSONObject) {
+        val js = "window.onNativeVinDecoded && window.onNativeVinDecoded(" +
+                JSONObject.quote(target) + "," + payload.toString() + ");"
         webView.post {
             try {
                 webView.evaluateJavascript(js, null)
