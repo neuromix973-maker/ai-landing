@@ -2,8 +2,6 @@ package com.jyotisha.darpana
 
 import android.Manifest
 import android.app.Activity
-import android.app.NotificationManager
-import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
@@ -17,8 +15,11 @@ class AutoToBridge(
     private val webView: WebView
 ) {
     companion object {
+        const val NOTIFICATION_PERMISSION_REQUEST = 9132
         const val BLUETOOTH_PERMISSION_REQUEST = 9133
     }
+
+    private var pendingMaintenanceCheckAfterPermission = false
 
     private val obdManager = ObdManager(activity.applicationContext) { event, payload ->
         emitObdEvent(event, payload)
@@ -29,6 +30,7 @@ class AutoToBridge(
     }
 
     init {
+        NotificationSupport.ensureChannels(activity.applicationContext)
         MaintenanceScheduler.ensureScheduled(activity.applicationContext)
     }
 
@@ -45,47 +47,67 @@ class AutoToBridge(
     @JavascriptInterface
     fun setMaintenanceRemindersEnabled(enabled: Boolean) {
         MaintenanceScheduler.setEnabled(activity.applicationContext, enabled)
-        if (enabled) requestNotificationPermission()
+        if (enabled && !NotificationSupport.permissionGranted(activity.applicationContext)) {
+            requestNotificationPermission()
+        }
+        emitNotificationStatus()
     }
 
     @JavascriptInterface
     fun runMaintenanceCheckNow() {
+        NotificationSupport.ensureChannels(activity.applicationContext)
+
+        if (!NotificationSupport.permissionGranted(activity.applicationContext)) {
+            pendingMaintenanceCheckAfterPermission = true
+            requestNotificationPermission()
+            return
+        }
+
+        if (!NotificationSupport.appNotificationsEnabled(activity.applicationContext)) {
+            openNotificationSettings()
+            emitNotificationStatus()
+            return
+        }
+
         MaintenanceScheduler.runNow(activity.applicationContext)
+        emitNotificationStatus()
     }
 
     @JavascriptInterface
     fun requestNotificationPermission() {
-        if (Build.VERSION.SDK_INT < 33) return
-        if (activity.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) ==
-            PackageManager.PERMISSION_GRANTED) return
+        NotificationSupport.ensureChannels(activity.applicationContext)
+
+        if (Build.VERSION.SDK_INT < 33 ||
+            activity.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) ==
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            emitNotificationStatus()
+            return
+        }
 
         activity.runOnUiThread {
             try {
                 activity.requestPermissions(
                     arrayOf(Manifest.permission.POST_NOTIFICATIONS),
-                    9132
+                    NOTIFICATION_PERMISSION_REQUEST
                 )
             } catch (_: Throwable) {
+                emitNotificationStatus()
             }
         }
     }
 
     @JavascriptInterface
-    fun getReminderModuleStatus(): String {
-        val nm = activity.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        val permission = when {
-            Build.VERSION.SDK_INT < 33 -> "not_required"
-            activity.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) ==
-                    PackageManager.PERMISSION_GRANTED -> "granted"
-            else -> "denied"
-        }
+    fun openNotificationSettings() {
+        NotificationSupport.openSettings(activity)
+    }
 
-        return JSONObject()
-            .put("supported", true)
-            .put("enabled", MaintenanceScheduler.isEnabled(activity.applicationContext))
-            .put("permission", permission)
-            .put("notificationsEnabled", nm.areNotificationsEnabled())
-            .toString()
+    @JavascriptInterface
+    fun getReminderModuleStatus(): String {
+        val status = NotificationSupport.statusJson(activity.applicationContext)
+        status.put("supported", true)
+        status.put("enabled", MaintenanceScheduler.isEnabled(activity.applicationContext))
+        return status.toString()
     }
 
     @JavascriptInterface
@@ -183,8 +205,20 @@ class AutoToBridge(
     }
 
     fun onPermissionResult(requestCode: Int, granted: Boolean) {
-        if (requestCode == BLUETOOTH_PERMISSION_REQUEST) {
-            emitObdEvent("permission", JSONObject().put("granted", granted))
+        when (requestCode) {
+            NOTIFICATION_PERMISSION_REQUEST -> {
+                if (granted && pendingMaintenanceCheckAfterPermission) {
+                    pendingMaintenanceCheckAfterPermission = false
+                    MaintenanceScheduler.runNow(activity.applicationContext)
+                } else if (!granted) {
+                    pendingMaintenanceCheckAfterPermission = false
+                }
+                emitNotificationStatus()
+            }
+
+            BLUETOOTH_PERMISSION_REQUEST -> {
+                emitObdEvent("permission", JSONObject().put("granted", granted))
+            }
         }
     }
 
@@ -213,6 +247,22 @@ class AutoToBridge(
     private fun emitVinEvent(target: String, payload: JSONObject) {
         val js = "window.onNativeVinDecoded && window.onNativeVinDecoded(" +
                 JSONObject.quote(target) + "," + payload.toString() + ");"
+        webView.post {
+            try {
+                webView.evaluateJavascript(js, null)
+            } catch (_: Throwable) {
+            }
+        }
+    }
+
+    private fun emitNotificationStatus() {
+        val payload = try {
+            getReminderModuleStatus()
+        } catch (_: Throwable) {
+            "{}"
+        }
+        val js = "window.onNativeNotificationStatus && window.onNativeNotificationStatus(" +
+                payload + ");"
         webView.post {
             try {
                 webView.evaluateJavascript(js, null)
