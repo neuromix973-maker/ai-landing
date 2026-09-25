@@ -9,8 +9,8 @@ import android.os.Build;
 import android.os.Bundle;
 import android.provider.MediaStore;
 import android.view.KeyEvent;
-import android.webkit.ValueCallback;
-import android.webkit.WebChromeClient;
+import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -19,8 +19,8 @@ import android.widget.Toast;
 public class MainActivity extends Activity {
     private static final int PHOTO_REQUEST = 7124;
     private WebView webView;
-    private ValueCallback<Uri[]> fileCallback;
     private AutoToBridge autoToBridge;
+    private boolean photoPickerOpen = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -35,54 +35,58 @@ public class MainActivity extends Activity {
         settings.setCacheMode(WebSettings.LOAD_DEFAULT);
         settings.setTextZoom(100);
 
-        webView.setBackgroundColor(0xFF020304);
-        webView.setWebViewClient(new WebViewClient());
-        webView.setWebChromeClient(new WebChromeClient() {
-            @Override
-            public boolean onShowFileChooser(
-                    WebView view,
-                    ValueCallback<Uri[]> callback,
-                    FileChooserParams params) {
-                cancelPendingChooser();
-                fileCallback = callback;
-                return launchImagePickerSafely();
-            }
-        });
-
         autoToBridge = new AutoToBridge(this, webView);
         webView.addJavascriptInterface(autoToBridge, "AutoTOAndroid");
+
+        webView.setBackgroundColor(0xFF020304);
+        webView.setWebViewClient(new WebViewClient() {
+            @Override
+            public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
+                WebResourceResponse local = autoToBridge.interceptVehiclePhotoRequest(request.getUrl());
+                return local != null ? local : super.shouldInterceptRequest(view, request);
+            }
+
+            @Override
+            @SuppressWarnings("deprecation")
+            public WebResourceResponse shouldInterceptRequest(WebView view, String url) {
+                WebResourceResponse local = autoToBridge.interceptVehiclePhotoRequest(Uri.parse(url));
+                return local != null ? local : super.shouldInterceptRequest(view, url);
+            }
+        });
 
         setContentView(webView);
         webView.loadUrl("file:///android_asset/index.html");
     }
 
-    private boolean launchImagePickerSafely() {
-        Intent primary;
-        if (Build.VERSION.SDK_INT >= 33) {
-            primary = new Intent(MediaStore.ACTION_PICK_IMAGES);
-            primary.setType("image/*");
-        } else {
-            primary = openDocumentIntent();
-        }
+    public void launchVehiclePhotoPicker() {
+        runOnUiThread(() -> {
+            if (photoPickerOpen) return;
+            photoPickerOpen = true;
 
-        try {
-            startActivityForResult(primary, PHOTO_REQUEST);
-            return true;
-        } catch (ActivityNotFoundException | SecurityException firstError) {
-            try {
-                Intent fallback = openDocumentIntent();
-                startActivityForResult(fallback, PHOTO_REQUEST);
-                return true;
-            } catch (Exception secondError) {
-                cancelPendingChooser();
-                Toast.makeText(this, "Не удалось открыть галерею", Toast.LENGTH_LONG).show();
-                return false;
+            Intent primary;
+            if (Build.VERSION.SDK_INT >= 33) {
+                primary = new Intent(MediaStore.ACTION_PICK_IMAGES);
+                primary.setType("image/*");
+            } else {
+                primary = openDocumentIntent();
             }
-        } catch (Throwable unexpected) {
-            cancelPendingChooser();
-            Toast.makeText(this, "Галерея временно недоступна", Toast.LENGTH_LONG).show();
-            return false;
-        }
+
+            try {
+                startActivityForResult(primary, PHOTO_REQUEST);
+            } catch (ActivityNotFoundException | SecurityException firstError) {
+                try {
+                    startActivityForResult(openDocumentIntent(), PHOTO_REQUEST);
+                } catch (Throwable secondError) {
+                    photoPickerOpen = false;
+                    if (autoToBridge != null) autoToBridge.onVehiclePhotoPicked(null);
+                    Toast.makeText(this, "Не удалось открыть галерею", Toast.LENGTH_LONG).show();
+                }
+            } catch (Throwable unexpected) {
+                photoPickerOpen = false;
+                if (autoToBridge != null) autoToBridge.onVehiclePhotoPicked(null);
+                Toast.makeText(this, "Галерея временно недоступна", Toast.LENGTH_LONG).show();
+            }
+        });
     }
 
     private Intent openDocumentIntent() {
@@ -97,34 +101,29 @@ public class MainActivity extends Activity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         if (requestCode == PHOTO_REQUEST) {
-            Uri[] result = null;
+            photoPickerOpen = false;
+            Uri uri = null;
             if (resultCode == RESULT_OK && data != null && data.getData() != null) {
-                Uri uri = data.getData();
-                result = new Uri[] { uri };
+                uri = data.getData();
                 try {
                     final int flags = data.getFlags() &
                             (Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
                     if ((data.getFlags() & Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION) != 0) {
                         getContentResolver().takePersistableUriPermission(
-                                uri, flags & Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                                uri,
+                                flags & Intent.FLAG_GRANT_READ_URI_PERMISSION
+                        );
                     }
-                } catch (Exception ignored) {
-                }
+                } catch (Exception ignored) { }
             }
-            ValueCallback<Uri[]> callback = fileCallback;
-            fileCallback = null;
-            if (callback != null) callback.onReceiveValue(result);
+            if (autoToBridge != null) autoToBridge.onVehiclePhotoPicked(uri);
             return;
         }
         super.onActivityResult(requestCode, resultCode, data);
     }
 
     @Override
-    public void onRequestPermissionsResult(
-            int requestCode,
-            String[] permissions,
-            int[] grantResults
-    ) {
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (autoToBridge != null) {
             boolean granted = true;
@@ -138,19 +137,9 @@ public class MainActivity extends Activity {
         }
     }
 
-    private void cancelPendingChooser() {
-        if (fileCallback != null) {
-            fileCallback.onReceiveValue(null);
-            fileCallback = null;
-        }
-    }
-
     @Override
     protected void onDestroy() {
-        cancelPendingChooser();
-        if (autoToBridge != null) {
-            autoToBridge.destroy();
-        }
+        if (autoToBridge != null) autoToBridge.destroy();
         if (webView != null) {
             webView.stopLoading();
             webView.destroy();
