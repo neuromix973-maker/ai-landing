@@ -13,8 +13,8 @@
         android:label="AUTO ТО PRO"
         android:theme="@style/AppTheme"
         android:usesCleartextTraffic="false"
-        android:icon="@drawable/ic_launcher_foreground"
-        android:roundIcon="@drawable/ic_launcher_foreground">
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round">
 
         <provider
             android:name="androidx.core.content.FileProvider"
