@@ -102,15 +102,12 @@ class ObdManager(
 
                 val device = adapter.getRemoteDevice(clean)
                 val first = device.createRfcommSocketToServiceRecord(SPP_UUID)
-                var activeSocket: BluetoothSocket? = null
-
-                try {
+                val activeSocket: BluetoothSocket = try {
                     first.connect()
-                    activeSocket = first
+                    first
                 } catch (firstError: Throwable) {
                     closeQuietly(first)
-                    activeSocket = tryLegacyChannelOne(device)
-                        ?: throw firstError
+                    tryLegacyChannelOne(device) ?: throw firstError
                 }
 
                 socket = activeSocket
