@@ -1,4 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
-<bitmap xmlns:android="http://schemas.android.com/apk/res/android"
-    android:src="@drawable/ic_launcher_foreground"
-    android:gravity="fill" />
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@color/launcher_background" />
+    <item
+        android:width="92dp"
+        android:height="92dp"
+        android:gravity="center"
+        android:drawable="@drawable/ic_launcher_foreground_vector" />
+</layer-list>
