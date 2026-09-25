@@ -11,8 +11,8 @@ android {
         applicationId 'com.jyotisha.darpana'
         minSdk 24
         targetSdk 35
-        versionCode 52
-        versionName '3.5.2'
+        versionCode 55
+        versionName '3.5.5'
     }
 
     compileOptions {
