@@ -24,6 +24,8 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
+        CrashReporter.applyStoredPreference(this);
+
         webView = new WebView(this);
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
@@ -47,8 +49,6 @@ public class MainActivity extends Activity {
             }
         });
 
-        // Minimal native bridge: maintenance reminders only.
-        // Existing JS data model remains in localStorage.
         webView.addJavascriptInterface(new AutoToBridge(this), "AutoTOAndroid");
 
         setContentView(webView);
@@ -108,7 +108,6 @@ public class MainActivity extends Activity {
                                 uri, flags & Intent.FLAG_GRANT_READ_URI_PERMISSION);
                     }
                 } catch (Exception ignored) {
-                    // Temporary access is enough for the current WebView file selection.
                 }
             }
             ValueCallback<Uri[]> callback = fileCallback;
