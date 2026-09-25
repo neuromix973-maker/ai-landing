@@ -4,270 +4,58 @@ import android.Manifest
 import android.app.Activity
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.provider.Settings
 import android.webkit.JavascriptInterface
+import android.webkit.WebResourceResponse
 import android.webkit.WebView
+import org.json.JSONArray
 import org.json.JSONObject
 
-class AutoToBridge(
-    private val activity: Activity,
-    private val webView: WebView
-) {
-    companion object {
-        const val NOTIFICATION_PERMISSION_REQUEST = 9132
-        const val BLUETOOTH_PERMISSION_REQUEST = 9133
-    }
+class AutoToBridge(private val activity:Activity,private val webView:WebView){
+    companion object{const val NOTIFICATION_PERMISSION_REQUEST=9132;const val BLUETOOTH_PERMISSION_REQUEST=9133}
+    private var pendingMaintenanceCheckAfterPermission=false
+    private val obdManager=ObdManager(activity.applicationContext){event,payload->emitObdEvent(event,payload)}
+    private val vinDecoder=VinDecoder(activity.applicationContext){target,payload->emitVinEvent(target,payload)}
+    private val vehiclePhotoManager=VehiclePhotoManager(activity.applicationContext){event,payload->emitVehiclePhotoEvent(event,payload)}
+    init{NotificationSupport.ensureChannels(activity.applicationContext);MaintenanceScheduler.ensureScheduled(activity.applicationContext)}
 
-    private var pendingMaintenanceCheckAfterPermission = false
+    @JavascriptInterface fun scheduleMaintenanceReminders(planJson:String){MaintenanceScheduler.updatePlan(activity.applicationContext,planJson)}
+    @JavascriptInterface fun scheduleDocumentReminders(planJson:String){MaintenanceScheduler.updateDocumentPlan(activity.applicationContext,planJson)}
+    @JavascriptInterface fun setMaintenanceRemindersEnabled(enabled:Boolean){MaintenanceScheduler.setEnabled(activity.applicationContext,enabled);if(enabled&&!NotificationSupport.permissionGranted(activity.applicationContext))requestNotificationPermission();emitNotificationStatus()}
+    @JavascriptInterface fun runMaintenanceCheckNow(){NotificationSupport.ensureChannels(activity.applicationContext);if(!NotificationSupport.permissionGranted(activity.applicationContext)){pendingMaintenanceCheckAfterPermission=true;requestNotificationPermission();return};if(!NotificationSupport.appNotificationsEnabled(activity.applicationContext)){openNotificationSettings();emitNotificationStatus();return};MaintenanceScheduler.runNow(activity.applicationContext);emitNotificationStatus()}
+    @JavascriptInterface fun requestNotificationPermission(){NotificationSupport.ensureChannels(activity.applicationContext);if(Build.VERSION.SDK_INT<33||activity.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)==PackageManager.PERMISSION_GRANTED){emitNotificationStatus();return};activity.runOnUiThread{try{activity.requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS),NOTIFICATION_PERMISSION_REQUEST)}catch(_:Throwable){emitNotificationStatus()}}}
+    @JavascriptInterface fun openNotificationSettings(){NotificationSupport.openSettings(activity)}
+    @JavascriptInterface fun getReminderModuleStatus():String{val s=NotificationSupport.statusJson(activity.applicationContext);s.put("supported",true);s.put("enabled",MaintenanceScheduler.isEnabled(activity.applicationContext));return s.toString()}
 
-    private val obdManager = ObdManager(activity.applicationContext) { event, payload ->
-        emitObdEvent(event, payload)
-    }
+    @JavascriptInterface fun requestBluetoothPermission(){if(Build.VERSION.SDK_INT<31||hasBluetoothPermission()){emitObdEvent("permission",JSONObject().put("granted",true));return};activity.runOnUiThread{try{activity.requestPermissions(arrayOf(Manifest.permission.BLUETOOTH_CONNECT),BLUETOOTH_PERMISSION_REQUEST)}catch(_:Throwable){emitObdEvent("error",JSONObject().put("code","PERMISSION_REQUEST_FAILED").put("message","Не удалось запросить разрешение Bluetooth"))}}}
+    @JavascriptInterface fun listPairedObdDevices():String{if(!hasBluetoothPermission())return JSONObject().put("ok",false).put("permissionRequired",true).put("devices",JSONArray()).toString();return obdManager.listPairedDevices().toString()}
+    @JavascriptInterface fun openBluetoothSettings(){activity.runOnUiThread{try{activity.startActivity(Intent(Settings.ACTION_BLUETOOTH_SETTINGS))}catch(_:Throwable){try{activity.startActivity(Intent(Settings.ACTION_SETTINGS))}catch(_:Throwable){}}}}
+    @JavascriptInterface fun connectObd(address:String){if(!hasBluetoothPermission()){emitObdEvent("permission_required",JSONObject().put("message","Разрешите доступ к Bluetooth"));requestBluetoothPermission();return};obdManager.connect(address)}
+    @JavascriptInterface fun disconnectObd(){obdManager.disconnect()}
+    @JavascriptInterface fun readObdDtc(){if(!hasBluetoothPermission()){emitObdEvent("permission_required",JSONObject().put("message","Разрешите доступ к Bluetooth"));requestBluetoothPermission();return};obdManager.readDtc()}
+    @JavascriptInterface fun getObdStatus():String=obdManager.statusJson().toString()
 
-    private val vinDecoder = VinDecoder(activity.applicationContext) { target, payload ->
-        emitVinEvent(target, payload)
-    }
+    @JavascriptInterface fun exportHistoryPdf(payloadJson:String):Boolean=PdfExportManager(activity).exportAndShare(payloadJson)
 
-    init {
-        NotificationSupport.ensureChannels(activity.applicationContext)
-        MaintenanceScheduler.ensureScheduled(activity.applicationContext)
-    }
+    @JavascriptInterface fun pickVehiclePhoto(){(activity as? MainActivity)?.launchVehiclePhotoPicker() ?: emitVehiclePhotoEvent("error",JSONObject().put("ok",false).put("message","Системная галерея недоступна"))}
+    @JavascriptInterface fun migrateVehiclePhotoBase64(dataUrl:String){vehiclePhotoManager.migrateBase64(dataUrl)}
+    @JavascriptInterface fun commitVehiclePhoto():String=try{vehiclePhotoManager.commitDraft()}catch(t:Throwable){emitVehiclePhotoEvent("error",JSONObject().put("ok",false).put("message",t.message?:"Не удалось сохранить фото"));""}
+    @JavascriptInterface fun discardVehiclePhotoDraft(){vehiclePhotoManager.discardDraft()}
+    @JavascriptInterface fun deleteVehiclePhoto(){vehiclePhotoManager.deletePhoto()}
+    @JavascriptInterface fun getVehiclePhotoUri():String=vehiclePhotoManager.currentUri()
+    @JavascriptInterface fun hasVehiclePhoto():Boolean=vehiclePhotoManager.hasPhoto()
+    fun onVehiclePhotoPicked(uri:Uri?){if(uri==null)emitVehiclePhotoEvent("cancelled",JSONObject().put("ok",false));else vehiclePhotoManager.importFromUri(uri)}
+    fun interceptVehiclePhotoRequest(uri:Uri?):WebResourceResponse?=vehiclePhotoManager.intercept(uri)
 
-    @JavascriptInterface
-    fun scheduleMaintenanceReminders(planJson: String) {
-        MaintenanceScheduler.updatePlan(activity.applicationContext, planJson)
-    }
+    @JavascriptInterface fun decodeVin(vin:String,modelYear:String,target:String){vinDecoder.decode(vin,modelYear,target)}
 
-    @JavascriptInterface
-    fun scheduleDocumentReminders(planJson: String) {
-        MaintenanceScheduler.updateDocumentPlan(activity.applicationContext, planJson)
-    }
-
-    @JavascriptInterface
-    fun setMaintenanceRemindersEnabled(enabled: Boolean) {
-        MaintenanceScheduler.setEnabled(activity.applicationContext, enabled)
-        if (enabled && !NotificationSupport.permissionGranted(activity.applicationContext)) {
-            requestNotificationPermission()
-        }
-        emitNotificationStatus()
-    }
-
-    @JavascriptInterface
-    fun runMaintenanceCheckNow() {
-        NotificationSupport.ensureChannels(activity.applicationContext)
-
-        if (!NotificationSupport.permissionGranted(activity.applicationContext)) {
-            pendingMaintenanceCheckAfterPermission = true
-            requestNotificationPermission()
-            return
-        }
-
-        if (!NotificationSupport.appNotificationsEnabled(activity.applicationContext)) {
-            openNotificationSettings()
-            emitNotificationStatus()
-            return
-        }
-
-        MaintenanceScheduler.runNow(activity.applicationContext)
-        emitNotificationStatus()
-    }
-
-    @JavascriptInterface
-    fun requestNotificationPermission() {
-        NotificationSupport.ensureChannels(activity.applicationContext)
-
-        if (Build.VERSION.SDK_INT < 33 ||
-            activity.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) ==
-            PackageManager.PERMISSION_GRANTED
-        ) {
-            emitNotificationStatus()
-            return
-        }
-
-        activity.runOnUiThread {
-            try {
-                activity.requestPermissions(
-                    arrayOf(Manifest.permission.POST_NOTIFICATIONS),
-                    NOTIFICATION_PERMISSION_REQUEST
-                )
-            } catch (_: Throwable) {
-                emitNotificationStatus()
-            }
-        }
-    }
-
-    @JavascriptInterface
-    fun openNotificationSettings() {
-        NotificationSupport.openSettings(activity)
-    }
-
-    @JavascriptInterface
-    fun getReminderModuleStatus(): String {
-        val status = NotificationSupport.statusJson(activity.applicationContext)
-        status.put("supported", true)
-        status.put("enabled", MaintenanceScheduler.isEnabled(activity.applicationContext))
-        return status.toString()
-    }
-
-    @JavascriptInterface
-    fun requestBluetoothPermission() {
-        if (Build.VERSION.SDK_INT < 31 || hasBluetoothPermission()) {
-            emitObdEvent("permission", JSONObject().put("granted", true))
-            return
-        }
-
-        activity.runOnUiThread {
-            try {
-                activity.requestPermissions(
-                    arrayOf(Manifest.permission.BLUETOOTH_CONNECT),
-                    BLUETOOTH_PERMISSION_REQUEST
-                )
-            } catch (_: Throwable) {
-                emitObdEvent(
-                    "error",
-                    JSONObject()
-                        .put("code", "PERMISSION_REQUEST_FAILED")
-                        .put("message", "Не удалось запросить разрешение Bluetooth")
-                )
-            }
-        }
-    }
-
-    @JavascriptInterface
-    fun listPairedObdDevices(): String {
-        if (!hasBluetoothPermission()) {
-            return JSONObject()
-                .put("ok", false)
-                .put("permissionRequired", true)
-                .put("devices", org.json.JSONArray())
-                .toString()
-        }
-        return obdManager.listPairedDevices().toString()
-    }
-
-    @JavascriptInterface
-    fun openBluetoothSettings() {
-        activity.runOnUiThread {
-            try {
-                activity.startActivity(Intent(Settings.ACTION_BLUETOOTH_SETTINGS))
-            } catch (_: Throwable) {
-                try {
-                    activity.startActivity(Intent(Settings.ACTION_SETTINGS))
-                } catch (_: Throwable) {
-                }
-            }
-        }
-    }
-
-    @JavascriptInterface
-    fun connectObd(address: String) {
-        if (!hasBluetoothPermission()) {
-            emitObdEvent(
-                "permission_required",
-                JSONObject().put("message", "Разрешите доступ к Bluetooth")
-            )
-            requestBluetoothPermission()
-            return
-        }
-        obdManager.connect(address)
-    }
-
-    @JavascriptInterface
-    fun disconnectObd() {
-        obdManager.disconnect()
-    }
-
-    @JavascriptInterface
-    fun readObdDtc() {
-        if (!hasBluetoothPermission()) {
-            emitObdEvent(
-                "permission_required",
-                JSONObject().put("message", "Разрешите доступ к Bluetooth")
-            )
-            requestBluetoothPermission()
-            return
-        }
-        obdManager.readDtc()
-    }
-
-    @JavascriptInterface
-    fun getObdStatus(): String = obdManager.statusJson().toString()
-
-    @JavascriptInterface
-    fun exportHistoryPdf(payloadJson: String): Boolean {
-        return PdfExportManager(activity).exportAndShare(payloadJson)
-    }
-
-    @JavascriptInterface
-    fun decodeVin(vin: String, modelYear: String, target: String) {
-        vinDecoder.decode(vin, modelYear, target)
-    }
-
-    fun onPermissionResult(requestCode: Int, granted: Boolean) {
-        when (requestCode) {
-            NOTIFICATION_PERMISSION_REQUEST -> {
-                if (granted && pendingMaintenanceCheckAfterPermission) {
-                    pendingMaintenanceCheckAfterPermission = false
-                    MaintenanceScheduler.runNow(activity.applicationContext)
-                } else if (!granted) {
-                    pendingMaintenanceCheckAfterPermission = false
-                }
-                emitNotificationStatus()
-            }
-
-            BLUETOOTH_PERMISSION_REQUEST -> {
-                emitObdEvent("permission", JSONObject().put("granted", granted))
-            }
-        }
-    }
-
-    fun destroy() {
-        obdManager.close()
-        vinDecoder.close()
-    }
-
-    private fun hasBluetoothPermission(): Boolean {
-        return Build.VERSION.SDK_INT < 31 ||
-                activity.checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) ==
-                PackageManager.PERMISSION_GRANTED
-    }
-
-    private fun emitObdEvent(event: String, payload: JSONObject) {
-        val js = "window.onNativeObdEvent && window.onNativeObdEvent(" +
-                JSONObject.quote(event) + "," + payload.toString() + ");"
-        webView.post {
-            try {
-                webView.evaluateJavascript(js, null)
-            } catch (_: Throwable) {
-            }
-        }
-    }
-
-    private fun emitVinEvent(target: String, payload: JSONObject) {
-        val js = "window.onNativeVinDecoded && window.onNativeVinDecoded(" +
-                JSONObject.quote(target) + "," + payload.toString() + ");"
-        webView.post {
-            try {
-                webView.evaluateJavascript(js, null)
-            } catch (_: Throwable) {
-            }
-        }
-    }
-
-    private fun emitNotificationStatus() {
-        val payload = try {
-            getReminderModuleStatus()
-        } catch (_: Throwable) {
-            "{}"
-        }
-        val js = "window.onNativeNotificationStatus && window.onNativeNotificationStatus(" +
-                payload + ");"
-        webView.post {
-            try {
-                webView.evaluateJavascript(js, null)
-            } catch (_: Throwable) {
-            }
-        }
-    }
+    fun onPermissionResult(requestCode:Int,granted:Boolean){when(requestCode){NOTIFICATION_PERMISSION_REQUEST->{if(granted&&pendingMaintenanceCheckAfterPermission){pendingMaintenanceCheckAfterPermission=false;MaintenanceScheduler.runNow(activity.applicationContext)}else if(!granted)pendingMaintenanceCheckAfterPermission=false;emitNotificationStatus()};BLUETOOTH_PERMISSION_REQUEST->emitObdEvent("permission",JSONObject().put("granted",granted))}}
+    fun destroy(){obdManager.close();vinDecoder.close();vehiclePhotoManager.close()}
+    private fun hasBluetoothPermission():Boolean=Build.VERSION.SDK_INT<31||activity.checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT)==PackageManager.PERMISSION_GRANTED
+    private fun emitObdEvent(event:String,payload:JSONObject){val js="window.onNativeObdEvent && window.onNativeObdEvent("+JSONObject.quote(event)+","+payload.toString()+");";webView.post{try{webView.evaluateJavascript(js,null)}catch(_:Throwable){}}}
+    private fun emitVinEvent(target:String,payload:JSONObject){val js="window.onNativeVinDecoded && window.onNativeVinDecoded("+JSONObject.quote(target)+","+payload.toString()+");";webView.post{try{webView.evaluateJavascript(js,null)}catch(_:Throwable){}}}
+    private fun emitVehiclePhotoEvent(event:String,payload:JSONObject){val js="window.onNativeVehiclePhoto && window.onNativeVehiclePhoto("+JSONObject.quote(event)+","+payload.toString()+");";webView.post{try{webView.evaluateJavascript(js,null)}catch(_:Throwable){}}}
+    private fun emitNotificationStatus(){val payload=try{getReminderModuleStatus()}catch(_:Throwable){"{}"};val js="window.onNativeNotificationStatus && window.onNativeNotificationStatus("+payload+");";webView.post{try{webView.evaluateJavascript(js,null)}catch(_:Throwable){}}}
 }
