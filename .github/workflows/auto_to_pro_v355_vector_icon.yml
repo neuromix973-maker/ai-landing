@@ -1,0 +1,26 @@
+name: AUTO TO PRO v3.5.5 Vector Icon Build
+on:
+  push:
+    branches: [ auto-to-pro-v355-vector-icon ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+
+      - name: Build release APK
+        working-directory: auto-to-pro-build
+        run: gradle :app:assembleRelease --stacktrace
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: auto-to-pro-v355-vector-icon-apk
+          path: auto-to-pro-build/app/build/outputs/apk/release/app-release-unsigned.apk
