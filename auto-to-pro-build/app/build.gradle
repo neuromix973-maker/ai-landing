@@ -11,8 +11,8 @@ android {
         applicationId 'com.jyotisha.darpana'
         minSdk 24
         targetSdk 35
-        versionCode 48
-        versionName '3.4.8'
+        versionCode 49
+        versionName '3.4.9'
     }
 
     compileOptions {
@@ -34,4 +34,5 @@ android {
 
 dependencies {
     implementation 'androidx.work:work-runtime-ktx:2.9.1'
+    implementation 'androidx.core:core-ktx:1.15.0'
 }
