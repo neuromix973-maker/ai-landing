@@ -12,6 +12,7 @@ import java.util.concurrent.TimeUnit
 object MaintenanceScheduler {
     const val PREFS = "auto_to_pro_native"
     const val KEY_PLAN = "maintenance_plan"
+    const val KEY_DOCUMENT_PLAN = "document_plan"
     const val KEY_ENABLED = "reminders_enabled"
     private const val UNIQUE_DAILY = "auto_to_pro_maintenance_daily"
     private const val UNIQUE_NOW = "auto_to_pro_maintenance_now"
@@ -19,6 +20,12 @@ object MaintenanceScheduler {
     @JvmStatic
     fun updatePlan(context: Context, json: String) {
         prefs(context).edit().putString(KEY_PLAN, json).apply()
+        if (isEnabled(context)) scheduleDaily(context) else cancel(context)
+    }
+
+    @JvmStatic
+    fun updateDocumentPlan(context: Context, json: String) {
+        prefs(context).edit().putString(KEY_DOCUMENT_PLAN, json).apply()
         if (isEnabled(context)) scheduleDaily(context) else cancel(context)
     }
 
@@ -94,7 +101,9 @@ object MaintenanceScheduler {
         val p = prefs(context)
         val editor = p.edit()
         for (key in p.all.keys) {
-            if (key.startsWith("last_notice_") || key.startsWith("last_doc_notice_")) editor.remove(key)
+            if (key.startsWith("last_notice_") || key.startsWith("last_doc_notice_")) {
+                editor.remove(key)
+            }
         }
         editor.apply()
     }
