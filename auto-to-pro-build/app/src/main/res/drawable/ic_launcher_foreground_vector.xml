@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Gold frame -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFD56A"
+        android:strokeWidth="5"
+        android:pathData="M26,12 C18,12 12,18 12,26 L12,82 C12,90 18,96 26,96 L82,96 C90,96 96,90 96,82 L96,26 C96,18 90,12 82,12 Z" />
+
+    <!-- Car silhouette -->
+    <path
+        android:fillColor="#FFD56A"
+        android:pathData="M22,58 L29,44 C31,40 36,37 42,37 L66,37 C72,37 77,40 79,44 L86,58 L91,61 L91,72 L84,72 L81,66 L27,66 L24,72 L17,72 L17,61 Z" />
+    <path
+        android:fillColor="#050505"
+        android:pathData="M36,44 L43,39 L65,39 L72,44 Z" />
+    <path
+        android:fillColor="#050505"
+        android:pathData="M26,57 C29,53 34,52 39,52 L69,52 C74,52 79,53 82,57 L79,61 L29,61 Z" />
+    <path
+        android:fillColor="#FFD56A"
+        android:pathData="M28,69 C24,69 21,72 21,76 C21,80 24,83 28,83 C32,83 35,80 35,76 C35,72 32,69 28,69 Z" />
+    <path
+        android:fillColor="#FFD56A"
+        android:pathData="M80,69 C76,69 73,72 73,76 C73,80 76,83 80,83 C84,83 87,80 87,76 C87,72 84,69 80,69 Z" />
+
+    <!-- Central gear -->
+    <path
+        android:fillColor="#FFF0A6"
+        android:pathData="M54,49 C45,49 38,56 38,65 C38,74 45,81 54,81 C63,81 70,74 70,65 C70,56 63,49 54,49 Z" />
+    <path
+        android:fillColor="#050505"
+        android:pathData="M54,56 C49,56 45,60 45,65 C45,70 49,74 54,74 C59,74 63,70 63,65 C63,60 59,56 54,56 Z" />
+
+    <!-- Wrench -->
+    <path
+        android:fillColor="#FFD56A"
+        android:pathData="M68,50 C72,46 78,46 82,48 L77,53 L80,57 L86,52 C88,57 87,63 83,67 C79,71 74,72 69,70 L53,86 C51,88 48,88 46,86 C44,84 44,81 46,79 L62,63 C60,58 62,53 68,50 Z" />
+</vector>
