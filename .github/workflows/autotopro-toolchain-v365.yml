@@ -19,6 +19,7 @@ jobs:
           curl -fL --retry 3 -o out/apksigner.jar https://raw.githubusercontent.com/bigdogs/rla/47b3bf4b8a1ad36d50294dffc59e1a10aec8ebeb/src/deps/apksigner.jar
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "build-tools;35.0.0" >/dev/null
           cp "$ANDROID_HOME/build-tools/35.0.0/zipalign" out/zipalign
+          cp "$ANDROID_HOME/build-tools/35.0.0/lib64/libc++.so" out/libc++.so
           chmod +x out/zipalign
           sha256sum out/* | tee out/SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
