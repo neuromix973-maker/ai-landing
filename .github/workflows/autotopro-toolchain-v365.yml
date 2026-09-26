@@ -16,9 +16,13 @@ jobs:
           curl -fL --retry 3 -o out/baksmali-2.5.2.jar https://raw.githubusercontent.com/bigdogs/rla/47b3bf4b8a1ad36d50294dffc59e1a10aec8ebeb/src/deps/baksmali-2.5.2.jar
           curl -fL --retry 3 -o out/dx.jar https://raw.githubusercontent.com/bigdogs/rla/47b3bf4b8a1ad36d50294dffc59e1a10aec8ebeb/src/deps/dx.jar
           curl -fL --retry 3 -o out/apktool_2.11.1.jar https://github.com/iBotPeaches/Apktool/releases/download/v2.11.1/apktool_2.11.1.jar
+          curl -fL --retry 3 -o out/apksigner.jar https://raw.githubusercontent.com/bigdogs/rla/47b3bf4b8a1ad36d50294dffc59e1a10aec8ebeb/src/deps/apksigner.jar
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "build-tools;35.0.0" >/dev/null
+          cp "$ANDROID_HOME/build-tools/35.0.0/zipalign" out/zipalign
+          chmod +x out/zipalign
           sha256sum out/* | tee out/SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: autotopro-toolchain-v365
+          name: autotopro-toolchain-v369
           path: out
           retention-days: 1
