@@ -1,0 +1,23 @@
+name: AUTO TO PRO temporary toolchain
+on:
+  push:
+    branches: [autotopro-toolchain-v365]
+jobs:
+  toolchain:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Android compilation tools
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p out
+          curl -fL --retry 3 -o out/android.jar https://raw.githubusercontent.com/Reginer/aosp-android-jar/main/android-35/android.jar
+          curl -fL --retry 3 -o out/smali-2.5.2.jar https://raw.githubusercontent.com/bigdogs/rla/47b3bf4b8a1ad36d50294dffc59e1a10aec8ebeb/src/deps/smali-2.5.2.jar
+          curl -fL --retry 3 -o out/baksmali-2.5.2.jar https://raw.githubusercontent.com/bigdogs/rla/47b3bf4b8a1ad36d50294dffc59e1a10aec8ebeb/src/deps/baksmali-2.5.2.jar
+          curl -fL --retry 3 -o out/dx.jar https://raw.githubusercontent.com/bigdogs/rla/47b3bf4b8a1ad36d50294dffc59e1a10aec8ebeb/src/deps/dx.jar
+          sha256sum out/* | tee out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: autotopro-toolchain-v365
+          path: out
+          retention-days: 1
